@@ -144,6 +144,8 @@ async def collect_and_store_frame():
             }
             if state.enable_bandwidth_profiling:
                 current_frame["dram_bandwidth"] = []
+                current_frame["dram_bandwidth_rx"] = []
+                current_frame["dram_bandwidth_tx"] = []
                 current_frame["gpu_bandwidth"] = []
 
             active_clients_data = {k: v for k, v in state.latest_client_data.items() if k in state.connected_clients}
@@ -171,7 +173,9 @@ async def collect_and_store_frame():
                     state.gpu_memory_count[gpu_global_id] = state.gpu_memory_count.get(gpu_global_id, 0) + 1
                     
                     if state.enable_bandwidth_profiling:
-                        current_frame["dram_bandwidth"].append(f"{gpu_metric.get('dram_bw_gbps', 0.0):.2f}")
+                        current_frame["dram_bandwidth_rx"].append(f"{gpu_metric.get('dram_bw_gbps_rx', 0.0):.2f}")
+                        current_frame["dram_bandwidth_tx"].append(f"{gpu_metric.get('dram_bw_gbps_tx', 0.0):.2f}") 
+                        current_frame["dram_bandwidth"].append(str(float(current_frame["dram_bandwidth_rx"][-1]) + float(current_frame["dram_bandwidth_tx"][-1]))) 
 
                 if state.enable_bandwidth_profiling:
                     for p2p_link in client_payload.get("p2p_links", []):
