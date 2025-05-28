@@ -121,6 +121,13 @@ uv run gswarm-profiler connect master-node:8090
 curl -X POST http://master-node:8090/start
 ```
 
+If you want to save the profiling data to a specific file, you can use the following command:
+
+```bash
+curl -X POST http://master-node:8090/start/my_profiling_data
+```
+Then the profiling data will be saved to `my_profiling_data.json` in the current directory.
+
 4. Run your distributed GPU workload
 
 5. Stop profiling after your workload completes:

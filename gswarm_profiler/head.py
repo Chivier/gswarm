@@ -242,8 +242,8 @@ async def collect_and_store_frame():
         logger.info("No profiling data to save.")
 
 
-@head_app.post("/start")
-async def start_profiling():
+@head_app.post("/start/{name:path}")
+async def start_profiling(name: str = None):
     if state.is_profiling:
         raise HTTPException(status_code=400, detail="Profiling is already active.")
 
@@ -252,7 +252,10 @@ async def start_profiling():
         state.profiling_data_frames = []
         state.frame_id_counter = 0
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        state.output_filename = f"gswarm_profiler_{timestamp}.json"
+        if name:
+            state.output_filename = f"{name}.json"
+        else:
+            state.output_filename = f"gswarm_profiler_{timestamp}.json"
         
         # Clear stale data from previous runs or disconnected clients
         current_connected_ids = list(state.connected_clients.keys())
