@@ -25,6 +25,7 @@ class HeadNodeState:
         self.data_lock = asyncio.Lock()
         self.profiling_task: asyncio.Task = None
         self.enable_bandwidth_profiling: bool = False
+        self.enable_nvlink_profiling: bool = False
 
         # New state for accumulated stats per device
         self.gpu_total_util: Dict[str, float] = {}
@@ -43,6 +44,7 @@ async def get_state():
     return {
         "freq": state.freq,
         "enable_bandwidth_profiling": state.enable_bandwidth_profiling,
+        "enable_nvlink_profiling": state.enable_nvlink_profiling,
         "is_profiling": state.is_profiling,
         "profiling_data_frames": state.profiling_data_frames,
         "output_filename": state.output_filename,
@@ -177,7 +179,7 @@ async def collect_and_store_frame():
                         current_frame["dram_bandwidth_tx"].append(f"{gpu_metric.get('dram_bw_gbps_tx', 0.0):.2f}") 
                         current_frame["dram_bandwidth"].append(str(float(current_frame["dram_bandwidth_rx"][-1]) + float(current_frame["dram_bandwidth_tx"][-1]))) 
 
-                if state.enable_bandwidth_profiling:
+                if state.enable_nvlink_profiling:
                     for p2p_link in client_payload.get("p2p_links", []):
                         source_gpu_global_id = get_global_gpu_id(
                             client_hostname, 
@@ -294,10 +296,11 @@ async def stop_profiling():
     return {"message": f"Profiling stopped. Data saved to {state.output_filename if state.output_filename else 'N/A'}"}
 
 # This function will be called by Typer CLI
-def run_head_node(host: str, port: int, enable_bandwidth: bool, freq: int):
+def run_head_node(host: str, port: int, enable_bandwidth: bool, enable_nvlink: bool, freq: int):
     logger.info(f"Starting GSwarm Profiler Head Node on {host}:{port}")
     logger.info(f"Bandwidth profiling: {'Enabled' if enable_bandwidth else 'Disabled'}")
     state.enable_bandwidth_profiling = enable_bandwidth
+    state.enable_nvlink_profiling = enable_nvlink
     state.freq = freq
     # Log own GPUs if any for information
     try:

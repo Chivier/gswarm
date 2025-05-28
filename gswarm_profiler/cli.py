@@ -7,7 +7,11 @@ import sys
 logger.remove() # Remove default handler
 logger.add(sys.stderr, level="INFO") # Add back with specific level, can be configured
 
-app = typer.Typer(name="gswarm-profiler", help="Multi-node multi-GPU profiler using nvitop.")
+app = typer.Typer(
+    name="gswarm-profiler", 
+    help="Multi-node multi-GPU profiler using nvitop.",
+    epilog="For more information, visit: https://github.com/your-repo/gswarm-profiler"
+)
 
 # Placeholder for head module if we need to access its state (e.g. enable_bandwidth)
 # This gets tricky with separate processes. The head node's enable_bandwidth setting is key.
@@ -34,12 +38,17 @@ app = typer.Typer(name="gswarm-profiler", help="Multi-node multi-GPU profiler us
 # 2. Client's `connect --enable-bandwidth` means client will *collect and send* bandwidth data.
 # They should ideally be consistent.
 
-@app.command(name="start", help="Starts the head node (data collector server).")
+@app.command(
+    name="start", 
+    help="Starts the head node (data collector server).",
+    epilog="Example: gswarm-profiler start --host 0.0.0.0 --port 8090 --freq 500 --enable-bandwidth"
+)
 def start_head_node(
     host: Annotated[str, typer.Option(help="Host address for the head node.")] = "localhost",
     port: Annotated[int, typer.Option(help="Port for the head node.")] = 8090,
     freq: Annotated[int, typer.Option(help="Sampling frequency in milliseconds.")] = 500,
     enable_bandwidth: Annotated[bool, typer.Option("--enable-bandwidth/--disable-bandwidth", help="Enable GPU-DRAM and GPU-GPU bandwidth profiling.")] = False,
+    enable_nvlink: Annotated[bool, typer.Option("--enable-nvlink/--disable-nvlink", help="Enable NVLink bandwidth profiling.")] = False,
 ):
     """
     Starts the head node server.
@@ -48,9 +57,13 @@ def start_head_node(
     from .head import run_head_node # Local import to avoid circular dependencies if any
     logger.info(f"Head node enable_bandwidth set to: {enable_bandwidth}")
     logger.info(f"Sampling frequency set to: {freq}ms")
-    run_head_node(host, port, enable_bandwidth, freq)
+    run_head_node(host, port, enable_bandwidth, enable_nvlink, freq)
 
-@app.command(name="connect", help="Connects a client node to the head node.")
+@app.command(
+    name="connect", 
+    help="Connects a client node to the head node.",
+    epilog="Example: gswarm-profiler connect localhost:8090"
+)
 def connect_client_node(
     head_address: Annotated[str, typer.Argument(help="Address of the head node (e.g., localhost:8090).")],
 ):
@@ -72,6 +85,21 @@ def connect_client_node(
     from .client import start_client_node_sync # Local import
     start_client_node_sync(head_address, freq, enable_bandwidth)
 
+@app.command(name="help", help="Show detailed help information.")
+def show_help(
+    command: Annotated[str, typer.Argument(help="Show help for specific command")] = None
+):
+    """Show help for the application or specific commands."""
+    if command:
+        if command == "start":
+            typer.echo("Detailed help for 'start' command...")
+        elif command == "connect":
+            typer.echo("Detailed help for 'connect' command...")
+        else:
+            typer.echo(f"Unknown command: {command}")
+    else:
+        typer.echo("Available commands: start, connect")
+        typer.echo("Use --help with any command for detailed information")
 
 if __name__ == "__main__":
     app()

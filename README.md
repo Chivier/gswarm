@@ -22,14 +22,14 @@ Ideal for debugging performance issues in distributed deep learning workloads, c
 
 - Python 3.8 or higher
 - NVIDIA GPUs with installed drivers
-- Poetry package manager
+- uv package manager
 
-### Installing Poetry
+### Installing uv
 
-If you don't have Poetry installed, you can install it by following the instructions at [Poetry's official documentation](https://python-poetry.org/docs/#installation), or simply run:
+If you don't have uv installed, you can install it by following the instructions at [uv's official documentation](https://github.com/astral-sh/uv), or simply run:
 
 ```bash
-curl -sSL https://install.python-poetry.org | python3 -
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 ### Installing gswarm-profiler
@@ -40,9 +40,9 @@ git clone https://github.com/yourusername/gswarm-profiler.git
 cd gswarm-profiler
 ```
 
-2. Install dependencies using Poetry:
+2. Install dependencies using uv:
 ```bash
-poetry install
+uv sync
 ```
 
 ## Usage
@@ -52,7 +52,7 @@ poetry install
 The head node acts as a central server that collects data from all client nodes. Start it on your primary machine:
 
 ```bash
-poetry run gswarm-profiler start --port 8090 --enable-bandwidth --freq 1000
+uv run gswarm-profiler start --port 8090 --enable-bandwidth --freq 1000
 ```
 
 Parameters:
@@ -65,7 +65,7 @@ Parameters:
 On each machine with GPUs that you want to monitor, run:
 
 ```bash
-poetry run gswarm-profiler connect <head-node-ip>:8090
+uv run gswarm-profiler connect <head-node-ip>:8090
 ```
 
 Replace `<head-node-ip>` with the IP address or hostname of your head node.
@@ -102,16 +102,16 @@ The output JSON file contains profiling data frames, each with:
 
 1. Start the head node on your primary machine:
 ```bash
-poetry run gswarm-profiler start --port 8090 --enable-bandwidth --freq 1000
+uv run gswarm-profiler start --port 8090 --enable-bandwidth --freq 1000
 ```
 
 2. Connect client nodes from each machine in your cluster:
 ```bash
 # On machine 1
-poetry run gswarm-profiler connect master-node:8090
+uv run gswarm-profiler connect master-node:8090
 
 # On machine 2
-poetry run gswarm-profiler connect master-node:8090
+uv run gswarm-profiler connect master-node:8090
 
 # ... and so on
 ```
