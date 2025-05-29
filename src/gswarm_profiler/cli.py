@@ -7,6 +7,7 @@ import sys
 import asyncio
 import grpc
 from pathlib import Path
+import requests
 
 # Configure Loguru
 logger.remove()  # Remove default handler
@@ -64,7 +65,7 @@ def ensure_grpc_files():
 @app.command(
     name="start",
     help="Starts the head node (data collector server).",
-    epilog="Example: gswarm-profiler start --host 0.0.0.0 --port 8090 --freq 500 --enable-bandwidth",
+    epilog="Example: gswarm-profiler start --host 0.0.0.0 --port 8090 --freq 500 --enable-bandwidth --http-port 8080",
 )
 def start_head_node(
     host: Annotated[str, typer.Option(help="Host address for the head node.")] = "localhost",
@@ -85,10 +86,11 @@ def start_head_node(
         ),
     ] = False,
     background: Annotated[bool, typer.Option("--background", help="Run head node in background mode.")] = False,
+    http_port: Annotated[int, typer.Option(help="Port for HTTP API server. If not specified, HTTP API is disabled.")] = None,
 ):
     """
     Starts the head node server.
-    Example: gswarm-profiler start --port 8090 --freq 500 --enable-bandwidth
+    Example: gswarm-profiler start --port 8090 --freq 500 --enable-bandwidth --http-port 8080
     """
     
     # Ensure gRPC files exist before starting
@@ -107,16 +109,22 @@ def start_head_node(
             cmd.append("--enable-bandwidth")
         if enable_nvlink:
             cmd.append("--enable-nvlink")
+        if http_port:
+            cmd.extend(["--http-port", str(http_port)])
             
         subprocess.Popen(cmd)
         logger.info("Head node started in background")
+        if http_port:
+            logger.info(f"HTTP API will be available at http://{host}:{http_port}")
         return
 
     from .head import run_head_node
 
     logger.info(f"Head node enable_bandwidth set to: {enable_bandwidth}")
     logger.info(f"Sampling frequency set to: {freq}ms")
-    run_head_node(host, port, enable_bandwidth, enable_nvlink, freq)
+    if http_port:
+        logger.info(f"HTTP API enabled on port {http_port}")
+    run_head_node(host, port, enable_bandwidth, enable_nvlink, freq, http_port)
 
 
 @app.command(
@@ -222,15 +230,16 @@ def start_profiling(
 @app.command(
     name="stop",
     help="Stop profiling session on head node.",
-    epilog="Example: gswarm-profiler stop localhost:8090",
+    epilog="Example: gswarm-profiler stop localhost:8090 --name session1",
 )
 def stop_profiling(
     head_address: Annotated[str, typer.Argument(help="Address of the head node (e.g., localhost:8090).")] = "localhost:8090",
+    name: Annotated[str, typer.Option(help="Name of specific session to stop. If not provided, stops all sessions.")] = None,
 ):
     """
     Stop the profiling session on the head node.
     If head_address is not provided, it will be set to "localhost:8090".
-    Example: gswarm-profiler stop localhost:8090
+    Example: gswarm-profiler stop localhost:8090 --name session1
     """
     
     # Ensure gRPC files exist
@@ -244,7 +253,10 @@ def stop_profiling(
                 
             async with grpc.aio.insecure_channel(head_address) as channel:
                 stub = profiler_pb2_grpc.ProfilerServiceStub(channel)
-                response = await stub.StopProfiling(profiler_pb2.Empty())
+                request = profiler_pb2.StopProfilingRequest()
+                if name:
+                    request.name = name
+                response = await stub.StopProfiling(request)
                 
                 if response.success:
                     logger.info(f"Profiling stopped: {response.message}")
@@ -373,6 +385,107 @@ def show_help(
     else:
         typer.echo("Available commands: start, connect, profile, stop, status, exit, stat")
         typer.echo("Use --help with any command for detailed information")
+
+
+@app.command(
+    name="http-profile",
+    help="Start profiling session via HTTP API.",
+    epilog="Example: gswarm-profiler http-profile localhost:8080 --name my_experiment",
+)
+def start_profiling_http(
+    http_address: Annotated[str, typer.Argument(help="Address of the HTTP API (e.g., localhost:8080).")] = "localhost:8080",
+    name: Annotated[str, typer.Option(help="Name for the profiling session output file.")] = None,
+):
+    """
+    Start a profiling session via HTTP API.
+    Example: gswarm-profiler http-profile localhost:8080 --name my_experiment
+    """
+    
+    if not name:
+        name = "profiling_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    try:
+        url = f"http://{http_address}/profiling/start"
+        response = requests.post(url, json={"name": name})
+        response.raise_for_status()
+        
+        data = response.json()
+        if data["success"]:
+            logger.info(f"Profiling started: {data['message']}")
+            logger.info(f"Output file: {data['output_file']}")
+        else:
+            logger.error(f"Failed to start profiling: {data['message']}")
+            
+    except Exception as e:
+        logger.error(f"Failed to start profiling via HTTP: {e}")
+
+
+@app.command(
+    name="http-stop",
+    help="Stop profiling session via HTTP API.",
+    epilog="Example: gswarm-profiler http-stop localhost:8091 --name session1",
+)
+def stop_profiling_http(
+    http_address: Annotated[str, typer.Argument(help="Address of the HTTP API (e.g., localhost:8091).")] = "localhost:8091",
+    name: Annotated[str, typer.Option(help="Name of specific session to stop. If not provided, stops all sessions.")] = None,
+):
+    """
+    Stop the profiling session via HTTP API.
+    Example: gswarm-profiler http-stop localhost:8091 --name session1
+    """
+    try:
+        url = f"http://{http_address}/profiling/stop"
+        data = {}
+        if name:
+            data["name"] = name
+        response = requests.post(url, json=data)
+        response.raise_for_status()
+        
+        data = response.json()
+        if data["success"]:
+            logger.info(f"Profiling stopped: {data['message']}")
+        else:
+            logger.error(f"Failed to stop profiling: {data['message']}")
+            
+    except Exception as e:
+        logger.error(f"Failed to stop profiling via HTTP: {e}")
+
+
+@app.command(
+    name="http-status",
+    help="Get status via HTTP API.",
+    epilog="Example: gswarm-profiler http-status localhost:8080",
+)
+def get_status_http(
+    http_address: Annotated[str, typer.Argument(help="Address of the HTTP API (e.g., localhost:8080).")] = "localhost:8080",
+):
+    """
+    Get the status via HTTP API.
+    Example: gswarm-profiler http-status localhost:8080
+    """
+    try:
+        url = f"http://{http_address}/status"
+        response = requests.get(url)
+        response.raise_for_status()
+        
+        data = response.json()
+        logger.info("Head Node Status (via HTTP):")
+        logger.info(f"  Frequency: {data['freq']}ms")
+        logger.info(f"  Bandwidth Profiling: {'Enabled' if data['enable_bandwidth_profiling'] else 'Disabled'}")
+        logger.info(f"  NVLink Profiling: {'Enabled' if data['enable_nvlink_profiling'] else 'Disabled'}")
+        logger.info(f"  Is Profiling: {'Yes' if data['is_profiling'] else 'No'}")
+        logger.info(f"  Output Filename: {data['output_filename']}")
+        logger.info(f"  Frame Counter: {data['frame_id_counter']}")
+        logger.info(f"  Total GPUs: {data['total_gpus']}")
+        logger.info(f"  Connected Clients: {len(data['connected_clients'])}")
+        
+        if data['connected_clients']:
+            logger.info("  Client List:")
+            for client in data['connected_clients']:
+                logger.info(f"    - {client}")
+                
+    except Exception as e:
+        logger.error(f"Failed to get status via HTTP: {e}")
 
 
 if __name__ == "__main__":

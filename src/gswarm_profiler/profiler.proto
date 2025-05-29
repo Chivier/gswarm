@@ -52,6 +52,7 @@ message StatusResponse {
     string output_filename = 5;
     int32 frame_id_counter = 6;
     repeated string connected_clients = 7;
+    string active_sessions_json = 8;  // JSON string with detailed session info
 }
 
 message StartProfilingRequest {
@@ -62,6 +63,10 @@ message StartProfilingResponse {
     bool success = 1;
     string message = 2;
     string output_file = 3;
+}
+
+message StopProfilingRequest {
+    string name = 1;  // Optional: if not provided, stops all sessions
 }
 
 message StopProfilingResponse {
@@ -82,6 +87,6 @@ service ProfilerService {
     // Head node control endpoints
     rpc GetStatus(Empty) returns (StatusResponse);
     rpc StartProfiling(StartProfilingRequest) returns (StartProfilingResponse);
-    rpc StopProfiling(Empty) returns (StopProfilingResponse);
+    rpc StopProfiling(StopProfilingRequest) returns (StopProfilingResponse);
     rpc Exit(Empty) returns (Empty);
 } 

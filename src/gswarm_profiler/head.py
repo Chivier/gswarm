@@ -378,9 +378,31 @@ async def run_grpc_server(host: str, port: int):
         await server.stop(5)
 
 
-def run_head_node(host: str, port: int, enable_bandwidth: bool, enable_nvlink: bool, freq: int):
-    """Run the head node with gRPC server"""
+async def run_both_servers(grpc_host: str, grpc_port: int, http_host: str, http_port: int):
+    """Run both gRPC and HTTP servers concurrently"""
+    from .http_api import run_http_server
+    
+    # Create tasks for both servers
+    grpc_task = asyncio.create_task(run_grpc_server(grpc_host, grpc_port))
+    http_task = asyncio.create_task(run_http_server(http_host, http_port))
+    
+    try:
+        # Wait for both servers to run
+        await asyncio.gather(grpc_task, http_task)
+    except KeyboardInterrupt:
+        logger.info("Shutting down both servers...")
+        grpc_task.cancel()
+        http_task.cancel()
+        try:
+            await asyncio.gather(grpc_task, http_task, return_exceptions=True)
+        except Exception:
+            pass
+
+def run_head_node(host: str, port: int, enable_bandwidth: bool, enable_nvlink: bool, freq: int, http_port: int = None):
+    """Run the head node with gRPC server and optionally HTTP server"""
     logger.info(f"Starting GSwarm Profiler Head Node on {host}:{port} using gRPC")
+    if http_port:
+        logger.info(f"HTTP API will be available on {host}:{http_port}")
     logger.info(f"Bandwidth profiling: {'Enabled' if enable_bandwidth else 'Disabled'}")
     state.enable_bandwidth_profiling = enable_bandwidth
     state.enable_nvlink_profiling = enable_nvlink
@@ -394,4 +416,7 @@ def run_head_node(host: str, port: int, enable_bandwidth: bool, enable_nvlink: b
     except Exception:
         logger.info("Head node has no local NVIDIA GPUs or nvitop cannot access them.")
 
-    asyncio.run(run_grpc_server(host, port))
+    if http_port:
+        asyncio.run(run_both_servers(host, port, host, http_port))
+    else:
+        asyncio.run(run_grpc_server(host, port))
