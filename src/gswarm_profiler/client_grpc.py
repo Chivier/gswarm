@@ -130,38 +130,38 @@ def dict_to_grpc_metrics_update(hostname: str, payload: Dict[str, Any]) -> profi
     """Convert dictionary payload to gRPC MetricsUpdate message"""
     gpu_metrics = []
     for gpu in payload.get("gpus_metrics", []):
-        gpu_metrics.append(profiler_pb2.GPUMetric(
-            physical_idx=gpu["physical_idx"],
-            name=gpu["name"],
-            gpu_util=gpu["gpu_util"],
-            mem_util=gpu["mem_util"],
-            dram_bw_gbps_rx=gpu.get("dram_bw_gbps_rx", 0.0),
-            dram_bw_gbps_tx=gpu.get("dram_bw_gbps_tx", 0.0),
-            nvlink_bw_gbps_rx=gpu.get("nvlink_bw_gbps_rx", 0.0),
-            nvlink_bw_gbps_tx=gpu.get("nvlink_bw_gbps_tx", 0.0),
-        ))
-    
+        gpu_metrics.append(
+            profiler_pb2.GPUMetric(
+                physical_idx=gpu["physical_idx"],
+                name=gpu["name"],
+                gpu_util=gpu["gpu_util"],
+                mem_util=gpu["mem_util"],
+                dram_bw_gbps_rx=gpu.get("dram_bw_gbps_rx", 0.0),
+                dram_bw_gbps_tx=gpu.get("dram_bw_gbps_tx", 0.0),
+                nvlink_bw_gbps_rx=gpu.get("nvlink_bw_gbps_rx", 0.0),
+                nvlink_bw_gbps_tx=gpu.get("nvlink_bw_gbps_tx", 0.0),
+            )
+        )
+
     p2p_links = []
     for link in payload.get("p2p_links", []):
-        p2p_links.append(profiler_pb2.P2PLink(
-            local_gpu_physical_id=link["local_gpu_physical_id"],
-            local_gpu_name=link["local_gpu_name"],
-            remote_gpu_physical_id=link["remote_gpu_physical_id"],
-            remote_gpu_name=link["remote_gpu_name"],
-            type=link["type"],
-            aggregated_max_bandwidth_gbps=link["aggregated_max_bandwidth_gbps"],
-        ))
-    
-    return profiler_pb2.MetricsUpdate(
-        hostname=hostname,
-        gpus_metrics=gpu_metrics,
-        p2p_links=p2p_links
-    )
+        p2p_links.append(
+            profiler_pb2.P2PLink(
+                local_gpu_physical_id=link["local_gpu_physical_id"],
+                local_gpu_name=link["local_gpu_name"],
+                remote_gpu_physical_id=link["remote_gpu_physical_id"],
+                remote_gpu_name=link["remote_gpu_name"],
+                type=link["type"],
+                aggregated_max_bandwidth_gbps=link["aggregated_max_bandwidth_gbps"],
+            )
+        )
+
+    return profiler_pb2.MetricsUpdate(hostname=hostname, gpus_metrics=gpu_metrics, p2p_links=p2p_links)
 
 
 async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: bool):
     hostname = platform.node()
-    
+
     # Check if nvitop can find GPUs
     try:
         devices = nvitop.Device.all()
@@ -169,19 +169,13 @@ async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: boo
             logger.error("No NVIDIA GPUs found on this client node. Exiting.")
             return
         logger.info(f"Found {len(devices)} GPU(s) on this client: {[d.name() for d in devices]}")
-        
+
         # Prepare initial GPU info for gRPC
         gpu_infos = []
         for i, dev in enumerate(devices):
-            gpu_infos.append(profiler_pb2.GPUInfo(
-                physical_idx=i,
-                name=dev.name()
-            ))
-        
-        initial_info = profiler_pb2.InitialInfo(
-            hostname=hostname,
-            gpus=gpu_infos
-        )
+            gpu_infos.append(profiler_pb2.GPUInfo(physical_idx=i, name=dev.name()))
+
+        initial_info = profiler_pb2.InitialInfo(hostname=hostname, gpus=gpu_infos)
 
     except nvitop.NVMLError as e:
         logger.error(f"NVML Error: {e}. Ensure NVIDIA drivers are installed and nvitop has permissions.")
@@ -199,17 +193,17 @@ async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: boo
             # Create gRPC channel
             async with grpc.aio.insecure_channel(head_address) as channel:
                 stub = profiler_pb2_grpc.ProfilerServiceStub(channel)
-                
+
                 # Connect and send initial info
                 connect_response = await stub.Connect(initial_info)
                 if not connect_response.success:
                     logger.error(f"Failed to connect: {connect_response.message}")
                     await asyncio.sleep(retry_delay)
                     continue
-                
+
                 logger.info(f"Connected to head node: {connect_response.message}")
                 retry_delay = 5  # Reset retry delay on successful connection
-                
+
                 # Start streaming metrics
                 async def metrics_generator():
                     while True:
@@ -217,19 +211,19 @@ async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: boo
                         grpc_update = dict_to_grpc_metrics_update(hostname, metrics_payload)
                         yield grpc_update
                         await asyncio.sleep(freq_ms / 1000.0)
-                
+
                 # Create live display and stream metrics
                 metrics_payload = {}
                 with Live(display_gpu_info(metrics_payload), refresh_per_second=4) as live:
                     # Start the metrics streaming in background
                     stream_task = asyncio.create_task(stub.StreamMetrics(metrics_generator()))
-                    
+
                     # Update display in foreground
                     while True:
                         metrics_payload = await collect_gpu_metrics(enable_bandwidth)
                         live.update(display_gpu_info(metrics_payload))
                         await asyncio.sleep(1.0)  # Display update rate
-                        
+
                         # Check if streaming task is still running
                         if stream_task.done():
                             logger.warning("Metrics streaming task ended unexpectedly")
@@ -250,4 +244,4 @@ def start_client_node_sync(head_address: str, freq_ms: int, enable_bandwidth_cli
     except KeyboardInterrupt:
         logger.info("Client shutdown requested.")
     finally:
-        logger.info("Client exiting.") 
+        logger.info("Client exiting.")

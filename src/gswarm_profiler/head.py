@@ -10,6 +10,10 @@ import psutil
 import aiofiles
 import os
 import nvitop
+import time
+import sys
+from .session_manager import SessionManager, ProfilingSession
+from .persistence import FileBasedStorage
 
 # Import generated protobuf classes (these will be generated)
 try:
@@ -42,11 +46,17 @@ class HeadNodeState:
         # New state for accumulated stats per device
         self.dram_total_util: Dict[str, float] = {}
         self.disk_total_util: Dict[str, float] = {}
-        
+
         self.gpu_total_util: Dict[str, float] = {}
         self.gpu_util_count: Dict[str, int] = {}
         self.gpu_total_memory: Dict[str, float] = {}
         self.gpu_memory_count: Dict[str, int] = {}
+
+        # Add these new attributes:
+        self.session_manager = SessionManager()
+        self.active_sessions: Dict[str, ProfilingSession] = {}
+        self.client_last_seen: Dict[str, float] = {}
+        self.client_health_timeout = 30  # seconds
 
 
 state = HeadNodeState()
@@ -61,34 +71,35 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
         """Handle client connection and initial GPU info"""
         client_address = context.peer()
         client_id = f"{request.hostname}_{client_address}"
-        
+
         logger.info(f"Client {client_id} (hostname: {request.hostname}) connecting via gRPC.")
-        
+
         async with state.data_lock:
             state.connected_clients[client_id] = request.hostname
             state.client_gpu_info[client_id] = []
-            
+
             for gpu in request.gpus:
-                state.client_gpu_info[client_id].append({
-                    "id": get_global_gpu_id(request.hostname, gpu.physical_idx, gpu.name),
-                    "name": gpu.name,
-                    "physical_idx": gpu.physical_idx,
-                    "hostname": request.hostname,
-                })
-            
+                state.client_gpu_info[client_id].append(
+                    {
+                        "id": get_global_gpu_id(request.hostname, gpu.physical_idx, gpu.name),
+                        "name": gpu.name,
+                        "physical_idx": gpu.physical_idx,
+                        "hostname": request.hostname,
+                    }
+                )
+
             logger.info(f"Received initial GPU info from {client_id}: {len(request.gpus)} GPUs")
             log_total_gpus()
-        
+
         return profiler_pb2.ConnectResponse(
-            success=True,
-            message=f"Connected successfully. Registered {len(request.gpus)} GPUs."
+            success=True, message=f"Connected successfully. Registered {len(request.gpus)} GPUs."
         )
 
     async def StreamMetrics(self, request_iterator, context):
         """Handle streaming metrics from clients"""
-        client_address = context.peer()
+        # client_address = context.peer()
         client_id = None
-        
+
         try:
             async for metrics_update in request_iterator:
                 if client_id is None:
@@ -97,42 +108,43 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
                         if hostname == metrics_update.hostname:
                             client_id = cid
                             break
-                    
+
                     if client_id is None:
                         logger.warning(f"Received metrics from unknown client: {metrics_update.hostname}")
                         continue
-                
+
                 # Convert gRPC message to dictionary format (similar to original WebSocket format)
-                payload = {
-                    "gpus_metrics": [],
-                    "p2p_links": []
-                }
-                
+                payload = {"gpus_metrics": [], "p2p_links": []}
+
                 for gpu_metric in metrics_update.gpus_metrics:
-                    payload["gpus_metrics"].append({
-                        "physical_idx": gpu_metric.physical_idx,
-                        "name": gpu_metric.name,
-                        "gpu_util": gpu_metric.gpu_util,
-                        "mem_util": gpu_metric.mem_util,
-                        "dram_bw_gbps_rx": gpu_metric.dram_bw_gbps_rx,
-                        "dram_bw_gbps_tx": gpu_metric.dram_bw_gbps_tx,
-                        "nvlink_bw_gbps_rx": gpu_metric.nvlink_bw_gbps_rx,
-                        "nvlink_bw_gbps_tx": gpu_metric.nvlink_bw_gbps_tx,
-                    })
-                
+                    payload["gpus_metrics"].append(
+                        {
+                            "physical_idx": gpu_metric.physical_idx,
+                            "name": gpu_metric.name,
+                            "gpu_util": gpu_metric.gpu_util,
+                            "mem_util": gpu_metric.mem_util,
+                            "dram_bw_gbps_rx": gpu_metric.dram_bw_gbps_rx,
+                            "dram_bw_gbps_tx": gpu_metric.dram_bw_gbps_tx,
+                            "nvlink_bw_gbps_rx": gpu_metric.nvlink_bw_gbps_rx,
+                            "nvlink_bw_gbps_tx": gpu_metric.nvlink_bw_gbps_tx,
+                        }
+                    )
+
                 for p2p_link in metrics_update.p2p_links:
-                    payload["p2p_links"].append({
-                        "local_gpu_physical_id": p2p_link.local_gpu_physical_id,
-                        "local_gpu_name": p2p_link.local_gpu_name,
-                        "remote_gpu_physical_id": p2p_link.remote_gpu_physical_id,
-                        "remote_gpu_name": p2p_link.remote_gpu_name,
-                        "type": p2p_link.type,
-                        "aggregated_max_bandwidth_gbps": p2p_link.aggregated_max_bandwidth_gbps,
-                    })
-                
+                    payload["p2p_links"].append(
+                        {
+                            "local_gpu_physical_id": p2p_link.local_gpu_physical_id,
+                            "local_gpu_name": p2p_link.local_gpu_name,
+                            "remote_gpu_physical_id": p2p_link.remote_gpu_physical_id,
+                            "remote_gpu_name": p2p_link.remote_gpu_name,
+                            "type": p2p_link.type,
+                            "aggregated_max_bandwidth_gbps": p2p_link.aggregated_max_bandwidth_gbps,
+                        }
+                    )
+
                 async with state.data_lock:
                     state.latest_client_data[client_id] = payload
-                
+
         except Exception as e:
             logger.error(f"Error in StreamMetrics for client {client_id}: {e}")
         finally:
@@ -147,7 +159,7 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
                         del state.latest_client_data[client_id]
                 logger.info(f"Client {client_id} disconnected from gRPC stream.")
                 log_total_gpus()
-        
+
         return profiler_pb2.Empty()
 
     async def GetStatus(self, request: profiler_pb2.Empty, context):
@@ -166,9 +178,7 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
         """Start profiling session"""
         if state.is_profiling:
             return profiler_pb2.StartProfilingResponse(
-                success=False,
-                message="Profiling is already active.",
-                output_file=""
+                success=False, message="Profiling is already active.", output_file=""
             )
 
         async with state.data_lock:
@@ -194,20 +204,15 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
         state.profiling_task = asyncio.create_task(collect_and_store_frame())
         logger.info(f"Profiling started. Output will be saved to {state.output_filename}")
         log_total_gpus()
-        
+
         return profiler_pb2.StartProfilingResponse(
-            success=True,
-            message="Profiling started.",
-            output_file=state.output_filename
+            success=True, message="Profiling started.", output_file=state.output_filename
         )
 
     async def StopProfiling(self, request: profiler_pb2.Empty, context):
         """Stop profiling session"""
         if not state.is_profiling:
-            return profiler_pb2.StopProfilingResponse(
-                success=False,
-                message="Profiling is not active."
-            )
+            return profiler_pb2.StopProfilingResponse(success=False, message="Profiling is not active.")
 
         logger.info("Stopping profiling...")
         async with state.data_lock:
@@ -226,7 +231,7 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
 
         return profiler_pb2.StopProfilingResponse(
             success=True,
-            message=f"Profiling stopped. Data saved to {state.output_filename if state.output_filename else 'N/A'}"
+            message=f"Profiling stopped. Data saved to {state.output_filename if state.output_filename else 'N/A'}",
         )
 
     async def Exit(self, request: profiler_pb2.Empty, context):
@@ -359,18 +364,46 @@ async def collect_and_store_frame():
         logger.info("No profiling data to save.")
 
 
+async def health_monitor_task():
+    """Periodically check client health"""
+    while True:
+        try:
+            await asyncio.sleep(10)
+            disconnected = await state.check_client_health()
+            if disconnected:
+                logger.info(f"Health check found {len(disconnected)} disconnected clients")
+        except Exception as e:
+            logger.error(f"Error in health monitor: {e}")
+
+
+def check_port_availability(host: str, port: int) -> bool:
+    """Check if a port is available for binding"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind((host, port))
+            sock.close()
+            return True
+        except OSError:
+            return False
+
+
 async def run_grpc_server(host: str, port: int):
     """Run the gRPC server"""
     server = grpc.aio.server(futures.ThreadPoolExecutor(max_workers=10))
     servicer = ProfilerServicer()
     profiler_pb2_grpc.add_ProfilerServiceServicer_to_server(servicer, server)
-    
-    listen_addr = f'{host}:{port}'
-    server.add_insecure_port(listen_addr)
-    
+
+    listen_addr = f"{host}:{port}"
+
+    try:
+        server.add_insecure_port(listen_addr)
+    except Exception as e:
+        logger.error(f"Failed to bind gRPC server to {listen_addr}: {e}")
+        raise
+
     logger.info(f"Starting gRPC server on {listen_addr}")
     await server.start()
-    
+
     try:
         await server.wait_for_termination()
     except KeyboardInterrupt:
@@ -381,11 +414,11 @@ async def run_grpc_server(host: str, port: int):
 async def run_both_servers(grpc_host: str, grpc_port: int, http_host: str, http_port: int):
     """Run both gRPC and HTTP servers concurrently"""
     from .http_api import run_http_server
-    
+
     # Create tasks for both servers
     grpc_task = asyncio.create_task(run_grpc_server(grpc_host, grpc_port))
     http_task = asyncio.create_task(run_http_server(http_host, http_port))
-    
+
     try:
         # Wait for both servers to run
         await asyncio.gather(grpc_task, http_task)
@@ -398,8 +431,22 @@ async def run_both_servers(grpc_host: str, grpc_port: int, http_host: str, http_
         except Exception:
             pass
 
+
 def run_head_node(host: str, port: int, enable_bandwidth: bool, enable_nvlink: bool, freq: int, http_port: int = None):
     """Run the head node with gRPC server and optionally HTTP server"""
+    # Check port availability before starting
+    if not check_port_availability(host, port):
+        logger.error(f"Port {port} is already in use on {host}")
+        logger.info("Please choose a different port or stop the process using this port.")
+        logger.info(f"You can find the process using: lsof -i :{port} or netstat -tulpn | grep :{port}")
+        sys.exit(1)
+
+    if http_port and not check_port_availability(host, http_port):
+        logger.error(f"HTTP port {http_port} is already in use on {host}")
+        logger.info("Please choose a different HTTP port or stop the process using this port.")
+        logger.info(f"You can find the process using: lsof -i :{http_port} or netstat -tulpn | grep :{http_port}")
+        sys.exit(1)
+
     logger.info(f"Starting GSwarm Profiler Head Node on {host}:{port} using gRPC")
     if http_port:
         logger.info(f"HTTP API will be available on {host}:{http_port}")
@@ -407,7 +454,7 @@ def run_head_node(host: str, port: int, enable_bandwidth: bool, enable_nvlink: b
     state.enable_bandwidth_profiling = enable_bandwidth
     state.enable_nvlink_profiling = enable_nvlink
     state.freq = freq
-    
+
     # Log own GPUs if any for information
     try:
         local_devices = nvitop.Device.all()
@@ -416,7 +463,21 @@ def run_head_node(host: str, port: int, enable_bandwidth: bool, enable_nvlink: b
     except Exception:
         logger.info("Head node has no local NVIDIA GPUs or nvitop cannot access them.")
 
-    if http_port:
-        asyncio.run(run_both_servers(host, port, host, http_port))
-    else:
-        asyncio.run(run_grpc_server(host, port))
+    # Add this before starting the server:
+    async def initialize_and_run():
+        await state.session_manager.initialize()  # Fixed: call initialize on session_manager
+
+        # Then run the servers as before
+        if http_port:
+            await run_both_servers(host, port, host, http_port)
+        else:
+            await run_grpc_server(host, port)
+
+    try:
+        asyncio.run(initialize_and_run())
+    except grpc.RpcError as e:
+        logger.error(f"gRPC error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Failed to start head node: {e}")
+        sys.exit(1)

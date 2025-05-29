@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gswarm-profiler"
-version = "0.1.0"
+version = "0.2.1"
 description = "Multi-node multi-GPU profiler"
 authors = [
     {name = "Chivier Humber", email = "chivier.humber@outlook.com"},
@@ -36,7 +36,7 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
-ignore = ["F401", "I001"]
+ignore = ["F401", "I001", "E501"]
 
 [dependency-groups]
 dev = [

@@ -2,12 +2,16 @@ import asyncio
 import grpc
 import nvitop
 import platform
+import psutil  # Add psutil for system metrics
 import time
 from loguru import logger
 from typing import List, Dict, Any
 
 from rich.live import Live
 from rich.table import Table
+from rich.console import Console
+from rich.layout import Layout
+from rich.panel import Panel
 
 # Import generated protobuf classes
 try:
@@ -19,15 +23,17 @@ except ImportError:
 
 
 def display_gpu_info(payload: Dict[str, Any]):
-    table = Table()
-    table.add_column("GPU ID", justify="center")
-    table.add_column("GPU Name", justify="center")
-    table.add_column("GPU Utilization", justify="center")
-    table.add_column("Memory Utilization", justify="center")
-    table.add_column("DRAM Bandwidth RX", justify="center")
-    table.add_column("DRAM Bandwidth TX", justify="center")
-    table.add_column("NVLink Bandwidth RX", justify="center")
-    table.add_column("NVLink Bandwidth TX", justify="center")
+    """Display GPU metrics and system metrics in a formatted table"""
+    # Create GPU metrics table
+    gpu_table = Table(title="GPU Metrics")
+    gpu_table.add_column("GPU ID", justify="center")
+    gpu_table.add_column("GPU Name", justify="center")
+    gpu_table.add_column("GPU Utilization", justify="center")
+    gpu_table.add_column("GPU Memory Utilization", justify="center")  # Fixed column name
+    gpu_table.add_column("DRAM Bandwidth RX", justify="center")
+    gpu_table.add_column("DRAM Bandwidth TX", justify="center")
+    gpu_table.add_column("NVLink Bandwidth RX", justify="center")
+    gpu_table.add_column("NVLink Bandwidth TX", justify="center")
 
     metrics = payload.get("gpus_metrics", [])
     for gpu in metrics:
@@ -40,7 +46,7 @@ def display_gpu_info(payload: Dict[str, Any]):
         nvlink_bw_rx = gpu.get("nvlink_bw_gbps_rx", 0.0)
         nvlink_bw_tx = gpu.get("nvlink_bw_gbps_tx", 0.0)
 
-        table.add_row(
+        gpu_table.add_row(
             str(gpu_id),
             str(gpu_name),
             f"{gpu_util:.2f}%",
@@ -50,7 +56,45 @@ def display_gpu_info(payload: Dict[str, Any]):
             f"{nvlink_bw_rx:.2f} Kbps",
             f"{nvlink_bw_tx:.2f} Kbps",
         )
-    return table
+
+    # Create system metrics table
+    system_table = Table(title="System Metrics")
+    system_table.add_column("Metric", justify="left")
+    system_table.add_column("Value", justify="center")
+
+    # Add system metrics
+    system_metrics = payload.get("system_metrics", {})
+    system_table.add_row("DRAM Utilization", f"{system_metrics.get('dram_util', 0.0):.2f}%")
+    system_table.add_row("Disk Utilization", f"{system_metrics.get('disk_util', 0.0):.2f}%")
+
+    # Create layout with both tables
+    layout = Layout()
+    layout.split_column(Layout(gpu_table, name="gpu"), Layout(system_table, name="system", size=6))
+
+    return layout
+
+
+def collect_system_metrics() -> Dict[str, float]:
+    """Collect system-level metrics (DRAM and disk utilization)"""
+    system_metrics = {}
+
+    try:
+        # Get DRAM (memory) utilization
+        memory = psutil.virtual_memory()
+        system_metrics["dram_util"] = memory.percent
+    except Exception as e:
+        logger.debug(f"Failed to get DRAM utilization: {e}")
+        system_metrics["dram_util"] = 0.0
+
+    try:
+        # Get disk utilization (for root partition)
+        disk = psutil.disk_usage("/")
+        system_metrics["disk_util"] = disk.percent
+    except Exception as e:
+        logger.debug(f"Failed to get disk utilization: {e}")
+        system_metrics["disk_util"] = 0.0
+
+    return system_metrics
 
 
 async def collect_gpu_metrics(enable_bandwidth: bool) -> Dict[str, Any]:
@@ -108,16 +152,21 @@ async def collect_gpu_metrics(enable_bandwidth: bool) -> Dict[str, Any]:
 
         except Exception as e:
             logger.warning(f"Error collecting metrics for device {i}: {e}")
-            payload["gpus_metrics"].append({
-                "physical_idx": i,
-                "name": device.name() if hasattr(device, 'name') else f"GPU_{i}",
-                "gpu_util": 0.0,
-                "mem_util": 0.0,
-                "dram_bw_gbps_rx": 0.0,
-                "dram_bw_gbps_tx": 0.0,
-                "nvlink_bw_gbps_rx": 0.0,
-                "nvlink_bw_gbps_tx": 0.0,
-            })
+            payload["gpus_metrics"].append(
+                {
+                    "physical_idx": i,
+                    "name": device.name() if hasattr(device, "name") else f"GPU_{i}",
+                    "gpu_util": 0.0,
+                    "mem_util": 0.0,
+                    "dram_bw_gbps_rx": 0.0,
+                    "dram_bw_gbps_tx": 0.0,
+                    "nvlink_bw_gbps_rx": 0.0,
+                    "nvlink_bw_gbps_tx": 0.0,
+                }
+            )
+
+    # Add system metrics to payload
+    payload["system_metrics"] = collect_system_metrics()
 
     return payload
 
@@ -126,38 +175,38 @@ def dict_to_grpc_metrics_update(hostname: str, payload: Dict[str, Any]) -> profi
     """Convert dictionary payload to gRPC MetricsUpdate message"""
     gpu_metrics = []
     for gpu in payload.get("gpus_metrics", []):
-        gpu_metrics.append(profiler_pb2.GPUMetric(
-            physical_idx=gpu["physical_idx"],
-            name=gpu["name"],
-            gpu_util=gpu["gpu_util"],
-            mem_util=gpu["mem_util"],
-            dram_bw_gbps_rx=gpu.get("dram_bw_gbps_rx", 0.0),
-            dram_bw_gbps_tx=gpu.get("dram_bw_gbps_tx", 0.0),
-            nvlink_bw_gbps_rx=gpu.get("nvlink_bw_gbps_rx", 0.0),
-            nvlink_bw_gbps_tx=gpu.get("nvlink_bw_gbps_tx", 0.0),
-        ))
-    
+        gpu_metrics.append(
+            profiler_pb2.GPUMetric(
+                physical_idx=gpu["physical_idx"],
+                name=gpu["name"],
+                gpu_util=gpu["gpu_util"],
+                mem_util=gpu["mem_util"],
+                dram_bw_gbps_rx=gpu.get("dram_bw_gbps_rx", 0.0),
+                dram_bw_gbps_tx=gpu.get("dram_bw_gbps_tx", 0.0),
+                nvlink_bw_gbps_rx=gpu.get("nvlink_bw_gbps_rx", 0.0),
+                nvlink_bw_gbps_tx=gpu.get("nvlink_bw_gbps_tx", 0.0),
+            )
+        )
+
     p2p_links = []
     for link in payload.get("p2p_links", []):
-        p2p_links.append(profiler_pb2.P2PLink(
-            local_gpu_physical_id=link["local_gpu_physical_id"],
-            local_gpu_name=link["local_gpu_name"],
-            remote_gpu_physical_id=link["remote_gpu_physical_id"],
-            remote_gpu_name=link["remote_gpu_name"],
-            type=link["type"],
-            aggregated_max_bandwidth_gbps=link["aggregated_max_bandwidth_gbps"],
-        ))
-    
-    return profiler_pb2.MetricsUpdate(
-        hostname=hostname,
-        gpus_metrics=gpu_metrics,
-        p2p_links=p2p_links
-    )
+        p2p_links.append(
+            profiler_pb2.P2PLink(
+                local_gpu_physical_id=link["local_gpu_physical_id"],
+                local_gpu_name=link["local_gpu_name"],
+                remote_gpu_physical_id=link["remote_gpu_physical_id"],
+                remote_gpu_name=link["remote_gpu_name"],
+                type=link["type"],
+                aggregated_max_bandwidth_gbps=link["aggregated_max_bandwidth_gbps"],
+            )
+        )
+
+    return profiler_pb2.MetricsUpdate(hostname=hostname, gpus_metrics=gpu_metrics, p2p_links=p2p_links)
 
 
 async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: bool):
     hostname = platform.node()
-    
+
     # Check if nvitop can find GPUs
     try:
         devices = nvitop.Device.all()
@@ -165,19 +214,13 @@ async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: boo
             logger.error("No NVIDIA GPUs found on this client node. Exiting.")
             return
         logger.info(f"Found {len(devices)} GPU(s) on this client: {[d.name() for d in devices]}")
-        
+
         # Prepare initial GPU info for gRPC
         gpu_infos = []
         for i, dev in enumerate(devices):
-            gpu_infos.append(profiler_pb2.GPUInfo(
-                physical_idx=i,
-                name=dev.name()
-            ))
-        
-        initial_info = profiler_pb2.InitialInfo(
-            hostname=hostname,
-            gpus=gpu_infos
-        )
+            gpu_infos.append(profiler_pb2.GPUInfo(physical_idx=i, name=dev.name()))
+
+        initial_info = profiler_pb2.InitialInfo(hostname=hostname, gpus=gpu_infos)
 
     except nvitop.NVMLError as e:
         logger.error(f"NVML Error: {e}. Ensure NVIDIA drivers are installed and nvitop has permissions.")
@@ -195,17 +238,17 @@ async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: boo
             # Create gRPC channel
             async with grpc.aio.insecure_channel(head_address) as channel:
                 stub = profiler_pb2_grpc.ProfilerServiceStub(channel)
-                
+
                 # Connect and send initial info
                 connect_response = await stub.Connect(initial_info)
                 if not connect_response.success:
                     logger.error(f"Failed to connect: {connect_response.message}")
                     await asyncio.sleep(retry_delay)
                     continue
-                
+
                 logger.info(f"Connected to head node: {connect_response.message}")
                 retry_delay = 5  # Reset retry delay on successful connection
-                
+
                 # Start streaming metrics
                 async def metrics_generator():
                     while True:
@@ -217,13 +260,38 @@ async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: boo
                         except Exception as e:
                             logger.error(f"Error in metrics generator: {e}")
                             break
-                
-                # Start the metrics streaming and display
-                metrics_payload = {}
-                with Live(display_gpu_info(metrics_payload), refresh_per_second=4) as live:
-                    # Start the metrics streaming
-                    stream_response = await stub.StreamMetrics(metrics_generator())
-                    
+
+                # Start the metrics streaming and display with initial empty payload
+                metrics_payload = {"gpus_metrics": [], "system_metrics": {}}
+
+                # Create console for rich display
+                console = Console()
+
+                with Live(display_gpu_info(metrics_payload), refresh_per_second=4, console=console) as live:
+                    # Create a task for updating the display
+                    async def update_display():
+                        while True:
+                            try:
+                                metrics_payload = await collect_gpu_metrics(enable_bandwidth)
+                                live.update(display_gpu_info(metrics_payload))
+                                await asyncio.sleep(freq_ms / 1000.0)
+                            except Exception as e:
+                                logger.error(f"Error updating display: {e}")
+                                break
+
+                    # Run both the display update and metrics streaming concurrently
+                    display_task = asyncio.create_task(update_display())
+
+                    try:
+                        # Start the metrics streaming
+                        await stub.StreamMetrics(metrics_generator())
+                    finally:
+                        display_task.cancel()
+                        try:
+                            await display_task
+                        except asyncio.CancelledError:
+                            pass
+
                     # The streaming call has completed
                     logger.info("Metrics streaming completed")
 
