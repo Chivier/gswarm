@@ -1,14 +1,21 @@
 import asyncio
-import websockets
+import grpc
 import nvitop
 import platform
 import time
-import json
 from loguru import logger
 from typing import List, Dict, Any
 
 from rich.live import Live
 from rich.table import Table
+
+# Import generated protobuf classes
+try:
+    from . import profiler_pb2
+    from . import profiler_pb2_grpc
+except ImportError:
+    logger.error("gRPC protobuf files not found. Please run 'python generate_grpc.py' first.")
+    raise
 
 
 def display_gpu_info(payload: Dict[str, Any]):
@@ -55,116 +62,102 @@ async def collect_gpu_metrics(enable_bandwidth: bool) -> Dict[str, Any]:
 
     devices = nvitop.Device.all()
 
-    # Create a mapping using device index
-    device_info = {i: {"device": dev, "physical_idx": i, "name": dev.name()} for i, dev in enumerate(devices)}
-
     for i, device in enumerate(devices):
         try:
-            # Get basic GPU metrics using more fundamental NVML calls
             gpu_metric = {
                 "physical_idx": i,
                 "name": device.name(),
-                "gpu_util": 0.0,  # We'll try to get this if available
-                "mem_util": 0.0,  # We'll try to get this if available
+                "gpu_util": 0.0,
+                "mem_util": 0.0,
+                "dram_bw_gbps_rx": 0.0,
+                "dram_bw_gbps_tx": 0.0,
+                "nvlink_bw_gbps_rx": 0.0,
+                "nvlink_bw_gbps_tx": 0.0,
             }
 
-            # Try to get GPU utilization if available
             try:
                 gpu_metric["gpu_util"] = device.gpu_percent() / 100.0
-                # logger.info(f"Device GPU utilization: {gpu_metric['gpu_util']}")
             except (AttributeError, NotImplementedError):
                 logger.debug(f"GPU utilization not available for device {i}")
 
-            # Try to get memory utilization if available
             try:
                 gpu_metric["mem_util"] = device.memory_percent() / 100.0
-                # logger.info(f"Device memory utilization: {gpu_metric['mem_util']}")
             except (AttributeError, NotImplementedError):
                 logger.debug(f"Memory utilization not available for device {i}")
 
             if enable_bandwidth:
-                # DRAM (PCIe) Bandwidth - only if available
                 try:
                     bw_kbps = device.pcie_throughput()
-
                     if bw_kbps[0] is not None:
                         gpu_metric["dram_bw_gbps_rx"] = bw_kbps[0]
-                    else:
-                        gpu_metric["dram_bw_gbps_rx"] = 0.0
                     if bw_kbps[1] is not None:
                         gpu_metric["dram_bw_gbps_tx"] = bw_kbps[1]
-                    else:
-                        gpu_metric["dram_bw_gbps_tx"] = 0.0
-                    # logger.info(f"Device PCIe bandwidth (Receive): RX {gpu_metric['dram_bw_gbps_rx']} Gbps")
-                    # logger.info(f"Device PCIe bandwidth (Transmit): TX {gpu_metric['dram_bw_gbps_tx']} Gbps")
-
                 except (AttributeError, NotImplementedError):
-                    gpu_metric["dram_bw_gbps"] = 0.0
                     logger.debug(f"PCIe bandwidth not available for device {i}")
 
-                # NVLink information - only if available
                 try:
-                    # processed_nvlink_pairs: Dict[frozenset, float] = {}
-
-                    # for link_info in device.nvlink_information():
-                    #     if link_info.is_active:
-                    #         remote_idx = link_info.remote_device_index
-                    #         if remote_idx is not None:
-                    #             pair_key = frozenset((i, remote_idx))
-                    #             current_pair_bw = processed_nvlink_pairs.get(pair_key, 0.0)
-
-                    #             try:
-                    #                 speed_value = float(link_info.speed.split()[0])
-                    #                 current_pair_bw += speed_value
-                    #             except (ValueError, AttributeError):
-                    #                 logger.debug(f"Could not parse NVLink speed for device {i}")
-
-                    #             processed_nvlink_pairs[pair_key] = current_pair_bw
                     link_throughput = device.nvlink_total_throughput()
                     if link_throughput[0] is not None:
                         gpu_metric["nvlink_bw_gbps_tx"] = link_throughput[0]
-                    else:
+                    elif link_throughput[1] is not None:
                         gpu_metric["nvlink_bw_gbps_tx"] = link_throughput[1]
-
                 except (AttributeError, NotImplementedError):
                     logger.debug(f"NVLink information not available for device {i}")
-
-                # # Format links for payload
-                # for pair_key, total_bw_gbps in processed_nvlink_pairs.items():
-                #     gpu_idx1, gpu_idx2 = list(pair_key)
-                #     if i == min(gpu_idx1, gpu_idx2):
-                #         local_idx, remote_idx = (gpu_idx1, gpu_idx2) if gpu_idx1 == i else (gpu_idx2, gpu_idx1)
-
-                #         payload["p2p_links"].append({
-                #             "local_gpu_physical_id": local_idx,
-                #             "local_gpu_name": device_info[local_idx]["name"],
-                #             "remote_gpu_physical_id": remote_idx,
-                #             "remote_gpu_name": device_info[remote_idx]["name"],
-                #             "type": "NVLink",
-                #             "aggregated_max_bandwidth_gbps": total_bw_gbps
-                #         })
 
             payload["gpus_metrics"].append(gpu_metric)
 
         except Exception as e:
             logger.warning(f"Error collecting metrics for device {i}: {e}")
-            # Add a basic metric entry even if we couldn't get all the data
-            payload["gpus_metrics"].append(
-                {
-                    "physical_idx": i,
-                    "name": device.name(),
-                    "gpu_util": 0.0,
-                    "mem_util": 0.0,
-                }
-            )
+            payload["gpus_metrics"].append({
+                "physical_idx": i,
+                "name": device.name() if hasattr(device, 'name') else f"GPU_{i}",
+                "gpu_util": 0.0,
+                "mem_util": 0.0,
+                "dram_bw_gbps_rx": 0.0,
+                "dram_bw_gbps_tx": 0.0,
+                "nvlink_bw_gbps_rx": 0.0,
+                "nvlink_bw_gbps_tx": 0.0,
+            })
 
     return payload
 
 
+def dict_to_grpc_metrics_update(hostname: str, payload: Dict[str, Any]) -> profiler_pb2.MetricsUpdate:
+    """Convert dictionary payload to gRPC MetricsUpdate message"""
+    gpu_metrics = []
+    for gpu in payload.get("gpus_metrics", []):
+        gpu_metrics.append(profiler_pb2.GPUMetric(
+            physical_idx=gpu["physical_idx"],
+            name=gpu["name"],
+            gpu_util=gpu["gpu_util"],
+            mem_util=gpu["mem_util"],
+            dram_bw_gbps_rx=gpu.get("dram_bw_gbps_rx", 0.0),
+            dram_bw_gbps_tx=gpu.get("dram_bw_gbps_tx", 0.0),
+            nvlink_bw_gbps_rx=gpu.get("nvlink_bw_gbps_rx", 0.0),
+            nvlink_bw_gbps_tx=gpu.get("nvlink_bw_gbps_tx", 0.0),
+        ))
+    
+    p2p_links = []
+    for link in payload.get("p2p_links", []):
+        p2p_links.append(profiler_pb2.P2PLink(
+            local_gpu_physical_id=link["local_gpu_physical_id"],
+            local_gpu_name=link["local_gpu_name"],
+            remote_gpu_physical_id=link["remote_gpu_physical_id"],
+            remote_gpu_name=link["remote_gpu_name"],
+            type=link["type"],
+            aggregated_max_bandwidth_gbps=link["aggregated_max_bandwidth_gbps"],
+        ))
+    
+    return profiler_pb2.MetricsUpdate(
+        hostname=hostname,
+        gpus_metrics=gpu_metrics,
+        p2p_links=p2p_links
+    )
+
+
 async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: bool):
     hostname = platform.node()
-    uri = f"ws://{head_address}/connect/{hostname}"
-
+    
     # Check if nvitop can find GPUs
     try:
         devices = nvitop.Device.all()
@@ -172,10 +165,19 @@ async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: boo
             logger.error("No NVIDIA GPUs found on this client node. Exiting.")
             return
         logger.info(f"Found {len(devices)} GPU(s) on this client: {[d.name() for d in devices]}")
-        initial_gpu_info = {
-            "type": "initial_info",
-            "gpus": [{"physical_idx": i, "name": dev.name()} for i, dev in enumerate(devices)],
-        }
+        
+        # Prepare initial GPU info for gRPC
+        gpu_infos = []
+        for i, dev in enumerate(devices):
+            gpu_infos.append(profiler_pb2.GPUInfo(
+                physical_idx=i,
+                name=dev.name()
+            ))
+        
+        initial_info = profiler_pb2.InitialInfo(
+            hostname=hostname,
+            gpus=gpu_infos
+        )
 
     except nvitop.NVMLError as e:
         logger.error(f"NVML Error: {e}. Ensure NVIDIA drivers are installed and nvitop has permissions.")
@@ -184,37 +186,49 @@ async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: boo
         logger.error(f"Error initializing nvitop or finding GPUs: {e}")
         return
 
-    logger.info(f"Attempting to connect to head node at {uri}")
+    logger.info(f"Attempting to connect to head node at {head_address} via gRPC")
     logger.info(f"Client-side bandwidth data collection: {'Enabled' if enable_bandwidth else 'Disabled'}")
 
     retry_delay = 5
     while True:  # Connection retry loop
         try:
-            async with websockets.connect(uri, ping_interval=20, ping_timeout=20) as websocket:
-                logger.info(f"Connected to head node: {uri}")
+            # Create gRPC channel
+            async with grpc.aio.insecure_channel(head_address) as channel:
+                stub = profiler_pb2_grpc.ProfilerServiceStub(channel)
+                
+                # Connect and send initial info
+                connect_response = await stub.Connect(initial_info)
+                if not connect_response.success:
+                    logger.error(f"Failed to connect: {connect_response.message}")
+                    await asyncio.sleep(retry_delay)
+                    continue
+                
+                logger.info(f"Connected to head node: {connect_response.message}")
                 retry_delay = 5  # Reset retry delay on successful connection
-
-                # Send initial GPU info
-                await websocket.send(json.dumps(initial_gpu_info))
-                logger.info("Sent initial GPU info to head node.")
-
+                
+                # Start streaming metrics
+                async def metrics_generator():
+                    while True:
+                        try:
+                            metrics_payload = await collect_gpu_metrics(enable_bandwidth)
+                            grpc_update = dict_to_grpc_metrics_update(hostname, metrics_payload)
+                            yield grpc_update
+                            await asyncio.sleep(freq_ms / 1000.0)
+                        except Exception as e:
+                            logger.error(f"Error in metrics generator: {e}")
+                            break
+                
+                # Start the metrics streaming and display
                 metrics_payload = {}
                 with Live(display_gpu_info(metrics_payload), refresh_per_second=4) as live:
-                    while True:
-                        metrics_payload = await collect_gpu_metrics(enable_bandwidth)  # Pass enable_bandwidth
-                        live.update(display_gpu_info(metrics_payload))
-                        message_to_send = {
-                            "type": "metrics_update",
-                            "payload": metrics_payload,
-                        }
-                        await websocket.send(json.dumps(message_to_send))
-                        # logger.debug(f"Sent metrics update: {len(metrics_payload['gpus_metrics'])} GPUs")
-                        await asyncio.sleep(freq_ms / 1000.0)
+                    # Start the metrics streaming
+                    stream_response = await stub.StreamMetrics(metrics_generator())
+                    
+                    # The streaming call has completed
+                    logger.info("Metrics streaming completed")
 
-        except websockets.exceptions.ConnectionClosedError as e:
-            logger.warning(f"Connection closed to {uri}: {e}. Retrying in {retry_delay}s...")
-        except ConnectionRefusedError:
-            logger.warning(f"Connection refused by {uri}. Retrying in {retry_delay}s...")
+        except grpc.aio.AioRpcError as e:
+            logger.warning(f"gRPC error: {e.code()} - {e.details()}. Retrying in {retry_delay}s...")
         except Exception as e:
             logger.error(f"Error in client: {e}. Retrying in {retry_delay}s...")
 
@@ -222,7 +236,6 @@ async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: boo
         retry_delay = min(retry_delay * 2, 60)  # Exponential backoff up to 60s
 
 
-# This function will be called by Typer CLI, with `enable_bandwidth_client` passed from there.
 def start_client_node_sync(head_address: str, freq_ms: int, enable_bandwidth_client: bool):
     try:
         asyncio.run(run_client_node(head_address, freq_ms, enable_bandwidth_client))

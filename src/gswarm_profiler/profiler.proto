@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package gswarm_profiler;
+
+// Message definitions
+message GPUInfo {
+    int32 physical_idx = 1;
+    string name = 2;
+}
+
+message InitialInfo {
+    string hostname = 1;
+    repeated GPUInfo gpus = 2;
+}
+
+message GPUMetric {
+    int32 physical_idx = 1;
+    string name = 2;
+    double gpu_util = 3;
+    double mem_util = 4;
+    double dram_bw_gbps_rx = 5;
+    double dram_bw_gbps_tx = 6;
+    double nvlink_bw_gbps_rx = 7;
+    double nvlink_bw_gbps_tx = 8;
+}
+
+message P2PLink {
+    int32 local_gpu_physical_id = 1;
+    string local_gpu_name = 2;
+    int32 remote_gpu_physical_id = 3;
+    string remote_gpu_name = 4;
+    string type = 5;
+    double aggregated_max_bandwidth_gbps = 6;
+}
+
+message MetricsUpdate {
+    string hostname = 1;
+    repeated GPUMetric gpus_metrics = 2;
+    repeated P2PLink p2p_links = 3;
+}
+
+message ConnectResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+message StatusResponse {
+    int32 freq = 1;
+    bool enable_bandwidth_profiling = 2;
+    bool enable_nvlink_profiling = 3;
+    bool is_profiling = 4;
+    string output_filename = 5;
+    int32 frame_id_counter = 6;
+    repeated string connected_clients = 7;
+}
+
+message StartProfilingRequest {
+    string name = 1;
+}
+
+message StartProfilingResponse {
+    bool success = 1;
+    string message = 2;
+    string output_file = 3;
+}
+
+message StopProfilingResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+message Empty {}
+
+// Service definition
+service ProfilerService {
+    // Client connects and sends initial info, then streams metrics
+    rpc Connect(InitialInfo) returns (ConnectResponse);
+    
+    // Client streams metrics to head node
+    rpc StreamMetrics(stream MetricsUpdate) returns (Empty);
+    
+    // Head node control endpoints
+    rpc GetStatus(Empty) returns (StatusResponse);
+    rpc StartProfiling(StartProfilingRequest) returns (StartProfilingResponse);
+    rpc StopProfiling(Empty) returns (StopProfilingResponse);
+    rpc Exit(Empty) returns (Empty);
+} 

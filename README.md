@@ -22,15 +22,6 @@ Ideal for debugging performance issues in distributed deep learning workloads, c
 
 - Python 3.8 or higher
 - NVIDIA GPUs with installed drivers
-- uv package manager
-
-### Installing uv
-
-If you don't have uv installed, you can install it by following the instructions at [uv's official documentation](https://github.com/astral-sh/uv), or simply run:
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
 
 ### Installing gswarm-profiler
 
@@ -40,9 +31,10 @@ git clone https://github.com/yourusername/gswarm-profiler.git
 cd gswarm-profiler
 ```
 
-2. Install dependencies using uv:
+2. Install the package:
+
 ```bash
-uv sync
+pip install .
 ```
 
 ## Usage
@@ -52,7 +44,7 @@ uv sync
 The head node acts as a central server that collects data from all client nodes. Start it on your primary machine:
 
 ```bash
-uv run gswarm-profiler start --port 8090 --enable-bandwidth --freq 1000
+gsprof start --port 8090 --enable-bandwidth --freq 1000
 ```
 
 Parameters:
@@ -65,7 +57,7 @@ Parameters:
 On each machine with GPUs that you want to monitor, run:
 
 ```bash
-uv run gswarm-profiler connect <head-node-ip>:8090
+gsprof connect <head-node-ip>:8090
 ```
 
 Replace `<head-node-ip>` with the IP address or hostname of your head node.
@@ -102,16 +94,16 @@ The output JSON file contains profiling data frames, each with:
 
 1. Start the head node on your primary machine:
 ```bash
-uv run gswarm-profiler start --port 8090 --enable-bandwidth --freq 1000
+gsprof start --port 8090 --enable-bandwidth --freq 1000
 ```
 
 2. Connect client nodes from each machine in your cluster:
 ```bash
 # On machine 1
-uv run gswarm-profiler connect master-node:8090
+gsprof connect master-node:8090
 
 # On machine 2
-uv run gswarm-profiler connect master-node:8090
+gsprof connect master-node:8090
 
 # ... and so on
 ```
