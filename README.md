@@ -13,11 +13,11 @@ Key features:
 - JSON output format for easy integration with analysis tools
 - Simple command-line interface
 - Built on nvitop for accurate GPU metrics
-- **NEW**: HTTP API for web-based control panels
-- **NEW**: Support for multiple concurrent profiling sessions
-- **NEW**: Fault tolerance with automatic reconnection and data persistence
-- **NEW**: Session recovery after crashes
-- **NEW**: Client-side buffering for network interruptions
+- HTTP API for web-based control panels
+- Support for multiple concurrent profiling sessions
+- Fault tolerance with automatic reconnection and data persistence
+- Session recovery after crashes
+- Client-side buffering for network interruptions
 
 Ideal for debugging performance issues in distributed deep learning workloads, cluster monitoring, and resource optimization in multi-node GPU environments.
 
@@ -397,6 +397,8 @@ gsprof stat --data training_run_1.json --plot training_run_1.pdf
 gsprof recover --export --name my_experiment
 gsprof stat --data my_experiment.json --plot my_experiment.pdf
 ```
+
+TODO: add a figure demo here
 
 ## Architecture
 
