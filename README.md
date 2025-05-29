@@ -63,6 +63,15 @@ Parameters:
 - `--enable-nvlink`: Enable NVLink bandwidth profiling
 - `--freq`: Sampling frequency in milliseconds (default: 500)
 
+### Why use HTTP API?
+
+The HTTP API is useful for:
+- Monitoring and controlling profiling sessions from a web interface
+- Integrating with existing monitoring systems
+- Running profiling sessions from a remote machine
+
+GRPC is used for high-performance metric streaming, while HTTP API is used for control panel integration and session management.
+
 ### Connecting Client Nodes
 
 On each machine with GPUs that you want to monitor, run:
