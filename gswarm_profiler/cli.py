@@ -1,16 +1,17 @@
+import os
 import typer
 from typing_extensions import Annotated
 from loguru import logger
 import sys
 
 # Configure Loguru
-logger.remove() # Remove default handler
-logger.add(sys.stderr, level="INFO") # Add back with specific level, can be configured
+logger.remove()  # Remove default handler
+logger.add(sys.stderr, level="INFO")  # Add back with specific level, can be configured
 
 app = typer.Typer(
-    name="gswarm-profiler", 
+    name="gswarm-profiler",
     help="Multi-node multi-GPU profiler using nvitop.",
-    epilog="For more information, visit: https://github.com/your-repo/gswarm-profiler"
+    epilog="For more information, visit: https://github.com/your-repo/gswarm-profiler",
 )
 
 # Placeholder for head module if we need to access its state (e.g. enable_bandwidth)
@@ -38,31 +39,70 @@ app = typer.Typer(
 # 2. Client's `connect --enable-bandwidth` means client will *collect and send* bandwidth data.
 # They should ideally be consistent.
 
+
 @app.command(
-    name="start", 
+    name="start",
     help="Starts the head node (data collector server).",
-    epilog="Example: gswarm-profiler start --host 0.0.0.0 --port 8090 --freq 500 --enable-bandwidth"
+    epilog="Example: gswarm-profiler start --host 0.0.0.0 --port 8090 --freq 500 --enable-bandwidth",
 )
 def start_head_node(
     host: Annotated[str, typer.Option(help="Host address for the head node.")] = "localhost",
     port: Annotated[int, typer.Option(help="Port for the head node.")] = 8090,
     freq: Annotated[int, typer.Option(help="Sampling frequency in milliseconds.")] = 500,
-    enable_bandwidth: Annotated[bool, typer.Option("--enable-bandwidth/--disable-bandwidth", help="Enable GPU-DRAM and GPU-GPU bandwidth profiling.")] = False,
-    enable_nvlink: Annotated[bool, typer.Option("--enable-nvlink/--disable-nvlink", help="Enable NVLink bandwidth profiling.")] = False,
+    enable_bandwidth: Annotated[
+        bool,
+        typer.Option(
+            "--enable-bandwidth/--disable-bandwidth",
+            help="Enable GPU-DRAM and GPU-GPU bandwidth profiling.",
+        ),
+    ] = False,
+    enable_nvlink: Annotated[
+        bool,
+        typer.Option(
+            "--enable-nvlink/--disable-nvlink",
+            help="Enable NVLink bandwidth profiling.",
+        ),
+    ] = False,
+    background: Annotated[bool, typer.Option("--background", help="Run head node in background mode.")] = False,
 ):
     """
     Starts the head node server.
     Example: gswarm-profiler start --port 8090 --freq 500 --enable-bandwidth
     """
-    from .head import run_head_node # Local import to avoid circular dependencies if any
+
+    # if background is True, run the head node in background mode
+    if background:
+        import subprocess
+
+        subprocess.Popen(
+            [
+                "gswarm-profiler",
+                "start",
+                "--host",
+                host,
+                "--port",
+                str(port),
+                "--freq",
+                str(freq),
+                "--enable-bandwidth",
+                "--enable-nvlink",
+            ]
+        )
+        return
+
+    from .head import (
+        run_head_node,
+    )  # Local import to avoid circular dependencies if any
+
     logger.info(f"Head node enable_bandwidth set to: {enable_bandwidth}")
     logger.info(f"Sampling frequency set to: {freq}ms")
     run_head_node(host, port, enable_bandwidth, enable_nvlink, freq)
 
+
 @app.command(
-    name="connect", 
+    name="connect",
     help="Connects a client node to the head node.",
-    epilog="Example: gswarm-profiler connect localhost:8090"
+    epilog="Example: gswarm-profiler connect localhost:8090",
 )
 def connect_client_node(
     head_address: Annotated[str, typer.Argument(help="Address of the head node (e.g., localhost:8090).")],
@@ -73,6 +113,7 @@ def connect_client_node(
     """
     # read the head's freq and enable_bandwidth from the head node's state by calling the state endpoint
     import requests
+
     response = requests.post(f"http://{head_address}/state")
     state = response.json()
     freq = state["freq"]
@@ -81,13 +122,49 @@ def connect_client_node(
     if enable_bandwidth:
         logger.info("Client will attempt to collect and send bandwidth metrics.")
         logger.warning("Ensure the head node was also started with --enable-bandwidth to process this data.")
-    
-    from .client import start_client_node_sync # Local import
+
+    from .client import start_client_node_sync  # Local import
+
     start_client_node_sync(head_address, freq, enable_bandwidth)
+
+
+@app.command(
+    name="exit",
+    help="Exits the head node.",
+    epilog="Example: gswarm-profiler exit localhost:8090",
+)
+def exit_head_node(
+    head_address: Annotated[str, typer.Argument(help="Address of the head node (e.g., localhost:8090).")],
+):
+    """
+    Exits the head node.
+    Example: gswarm-profiler exit localhost:8090
+    """
+    import requests
+
+    response = requests.post(f"http://{head_address}/exit", timeout=10)
+    logger.info(f"Head node exited: {response.json()}")
+    sys.exit(0)
+
+
+@app.command(name="stat", help="Show the stat of the profiler.")
+def show_stat(
+    data: Annotated[str, typer.Option(help="Path to the data directory.")] = "result.json",
+    plot: Annotated[str, typer.Option(help="Path to the plot directory.")] = "",
+):
+    """Show the stat of the profiler."""
+    from .stat import show_stat
+
+    # if plot is not empty, use data filename as the plot filename
+    if plot == "":
+        plot = os.path.splitext(data)[0] + ".pdf"
+
+    show_stat(data, plot)
+
 
 @app.command(name="help", help="Show detailed help information.")
 def show_help(
-    command: Annotated[str, typer.Argument(help="Show help for specific command")] = None
+    command: Annotated[str, typer.Argument(help="Show help for specific command")] = None,
 ):
     """Show help for the application or specific commands."""
     if command:
@@ -100,6 +177,7 @@ def show_help(
     else:
         typer.echo("Available commands: start, connect")
         typer.echo("Use --help with any command for detailed information")
+
 
 if __name__ == "__main__":
     app()
