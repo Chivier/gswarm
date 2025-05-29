@@ -45,7 +45,9 @@ class HeadNodeState:
 
         # New state for accumulated stats per device
         self.dram_total_util: Dict[str, float] = {}
+        self.dram_util_count: Dict[str, int] = {}
         self.disk_total_util: Dict[str, float] = {}
+        self.disk_util_count: Dict[str, int] = {}
 
         self.gpu_total_util: Dict[str, float] = {}
         self.gpu_util_count: Dict[str, int] = {}
@@ -114,7 +116,7 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
                         continue
 
                 # Convert gRPC message to dictionary format (similar to original WebSocket format)
-                payload = {"gpus_metrics": [], "p2p_links": []}
+                payload = {"gpus_metrics": [], "p2p_links": [], "system_metrics": {}}
 
                 for gpu_metric in metrics_update.gpus_metrics:
                     payload["gpus_metrics"].append(
@@ -129,6 +131,13 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
                             "nvlink_bw_gbps_tx": gpu_metric.nvlink_bw_gbps_tx,
                         }
                     )
+                
+                # Add system metrics if available
+                if metrics_update.HasField("system_metrics"):
+                    payload["system_metrics"] = {
+                        "dram_util": metrics_update.system_metrics.dram_util,
+                        "disk_util": metrics_update.system_metrics.disk_util
+                    }
 
                 for p2p_link in metrics_update.p2p_links:
                     payload["p2p_links"].append(
@@ -200,6 +209,10 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
             state.gpu_util_count = {}
             state.gpu_total_memory = {}
             state.gpu_memory_count = {}
+            state.dram_total_util = {}
+            state.dram_util_count = {}
+            state.disk_total_util = {}
+            state.disk_util_count = {}
 
         state.profiling_task = asyncio.create_task(collect_and_store_frame())
         logger.info(f"Profiling started. Output will be saved to {state.output_filename}")
@@ -265,6 +278,8 @@ async def collect_and_store_frame():
                 "gpu_id": [],
                 "gpu_util": [],
                 "gpu_memory": [],
+                "dram_util": [],  # Add system DRAM utilization
+                "disk_util": [],  # Add disk utilization
             }
             if state.enable_bandwidth_profiling:
                 current_frame["dram_bandwidth"] = []
@@ -329,6 +344,22 @@ async def collect_and_store_frame():
                         if link_info not in current_frame["gpu_bandwidth"]:
                             current_frame["gpu_bandwidth"].append(link_info)
 
+                # Add system metrics for this client
+                system_metrics = client_payload.get("system_metrics", {})
+                if system_metrics:
+                    client_key = f"{client_hostname}"
+                    current_frame["dram_util"].append(f"{system_metrics.get('dram_util', 0.0):.2f}")
+                    current_frame["disk_util"].append(f"{system_metrics.get('disk_util', 0.0):.2f}")
+                    
+                    # Accumulate for averages
+                    dram_util_value = float(system_metrics.get('dram_util', 0.0))
+                    disk_util_value = float(system_metrics.get('disk_util', 0.0))
+                    
+                    state.dram_total_util[client_key] = state.dram_total_util.get(client_key, 0.0) + dram_util_value
+                    state.dram_util_count[client_key] = state.dram_util_count.get(client_key, 0) + 1
+                    state.disk_total_util[client_key] = state.disk_total_util.get(client_key, 0.0) + disk_util_value
+                    state.disk_util_count[client_key] = state.disk_util_count.get(client_key, 0) + 1
+
             state.profiling_data_frames.append(current_frame)
 
     logger.info("Profiling data collection loop finished.")
@@ -348,9 +379,24 @@ async def collect_and_store_frame():
                 avg_mem = total_mem / count
                 summary_by_device.setdefault(gpu_id, {})["avg_gpu_memory"] = f"{avg_mem:.2f}"
 
+        # Add system metrics to summary
+        summary_by_client = {}
+        for client_key, total_dram in state.dram_total_util.items():
+            count = state.dram_util_count.get(client_key, 0)
+            if count > 0:
+                avg_dram = total_dram / count
+                summary_by_client.setdefault(client_key, {})["avg_dram_util"] = f"{avg_dram:.2f}"
+        
+        for client_key, total_disk in state.disk_total_util.items():
+            count = state.disk_util_count.get(client_key, 0)
+            if count > 0:
+                avg_disk = total_disk / count
+                summary_by_client.setdefault(client_key, {})["avg_disk_util"] = f"{avg_disk:.2f}"
+
         output_data = {
             "frames": state.profiling_data_frames,
             "summary_by_device": summary_by_device,
+            "summary_by_client": summary_by_client,  # Add client-level system metrics summary
         }
 
         try:

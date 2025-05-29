@@ -200,8 +200,20 @@ def dict_to_grpc_metrics_update(hostname: str, payload: Dict[str, Any]) -> profi
                 aggregated_max_bandwidth_gbps=link["aggregated_max_bandwidth_gbps"],
             )
         )
+    
+    # Add system metrics to gRPC message
+    system_metrics = payload.get("system_metrics", {})
+    system_metrics_proto = profiler_pb2.SystemMetrics(
+        dram_util=system_metrics.get("dram_util", 0.0),
+        disk_util=system_metrics.get("disk_util", 0.0)
+    )
 
-    return profiler_pb2.MetricsUpdate(hostname=hostname, gpus_metrics=gpu_metrics, p2p_links=p2p_links)
+    return profiler_pb2.MetricsUpdate(
+        hostname=hostname, 
+        gpus_metrics=gpu_metrics, 
+        p2p_links=p2p_links,
+        system_metrics=system_metrics_proto
+    )
 
 
 async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: bool):

@@ -33,10 +33,17 @@ message P2PLink {
     double aggregated_max_bandwidth_gbps = 6;
 }
 
+// New message for system metrics
+message SystemMetrics {
+    double dram_util = 1;  // System RAM utilization percentage
+    double disk_util = 2;  // Disk utilization percentage
+}
+
 message MetricsUpdate {
     string hostname = 1;
     repeated GPUMetric gpus_metrics = 2;
     repeated P2PLink p2p_links = 3;
+    SystemMetrics system_metrics = 4;  // Add system metrics
 }
 
 message ConnectResponse {
