@@ -15,6 +15,15 @@ from . import profiler_pb2_grpc
 
 
 def display_gpu_info(payload: Dict[str, Any]):
+    """
+    Display GPU metrics in a formatted table
+
+    Args:
+        payload: Dictionary containing GPU metrics
+
+    Returns:
+        Table: Rich table containing GPU metrics
+    """
     table = Table()
     table.add_column("GPU ID", justify="center")
     table.add_column("GPU Name", justify="center")
@@ -50,15 +59,28 @@ def display_gpu_info(payload: Dict[str, Any]):
 
 
 async def collect_gpu_metrics(enable_bandwidth: bool) -> Dict[str, Any]:
-    # ... existing implementation remains the same ...
+    """
+    Collect GPU metrics from nvitop
+
+    Args:
+        enable_bandwidth: Whether to collect bandwidth metrics
+
+    Returns:
+        payload: Dictionary containing GPU metrics
+    """
+    # Initialize payload with empty lists for gpus_metrics and p2p_links
     payload: Dict[str, Any] = {
         "gpus_metrics": [],
     }
+
+    # If bandwidth profiling is enabled, initialize p2p_links as an empty list
     if enable_bandwidth:
         payload["p2p_links"] = []
 
+    # Get all NVIDIA GPUs
     devices = nvitop.Device.all()
 
+    # Iterate over all GPUs
     for i, device in enumerate(devices):
         try:
             gpu_metric = {
@@ -68,16 +90,19 @@ async def collect_gpu_metrics(enable_bandwidth: bool) -> Dict[str, Any]:
                 "mem_util": 0.0,
             }
 
+            # Collect GPU utilization
             try:
                 gpu_metric["gpu_util"] = device.gpu_percent() / 100.0
             except (AttributeError, NotImplementedError):
                 logger.debug(f"GPU utilization not available for device {i}")
 
+            # Collect memory utilization
             try:
                 gpu_metric["mem_util"] = device.memory_percent() / 100.0
             except (AttributeError, NotImplementedError):
                 logger.debug(f"Memory utilization not available for device {i}")
 
+            # If bandwidth profiling is enabled, collect bandwidth metrics
             if enable_bandwidth:
                 try:
                     bw_kbps = device.pcie_throughput()
@@ -106,6 +131,7 @@ async def collect_gpu_metrics(enable_bandwidth: bool) -> Dict[str, Any]:
                     gpu_metric["nvlink_bw_gbps_tx"] = 0.0
                     logger.debug(f"NVLink information not available for device {i}")
 
+            # Append the collected GPU metrics to the payload
             payload["gpus_metrics"].append(gpu_metric)
 
         except Exception as e:
@@ -127,7 +153,13 @@ async def collect_gpu_metrics(enable_bandwidth: bool) -> Dict[str, Any]:
 
 
 def dict_to_grpc_metrics_update(hostname: str, payload: Dict[str, Any]) -> profiler_pb2.MetricsUpdate:
-    """Convert dictionary payload to gRPC MetricsUpdate message"""
+    """
+    Convert dictionary payload to gRPC MetricsUpdate message
+
+    Args:
+        hostname: The hostname of the client
+        payload: Dictionary containing GPU metrics
+    """
     gpu_metrics = []
     for gpu in payload.get("gpus_metrics", []):
         gpu_metrics.append(

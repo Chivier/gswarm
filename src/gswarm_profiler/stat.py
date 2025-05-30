@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+# TODO: add more metrics to the plot (dram util)
+# TODO: fix frame_id to be the actual time
 def show_stat(data_path, plot_path):
     with open(data_path, "r") as f:
         data = json.load(f)

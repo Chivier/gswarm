@@ -36,7 +36,7 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
-ignore = ["F401", "I001", "E501"]
+ignore = ["F401", "I001", "E501", "F541"]
 
 [dependency-groups]
 dev = [

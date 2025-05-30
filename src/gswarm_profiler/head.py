@@ -68,6 +68,7 @@ def get_global_gpu_id(hostname: str, device_idx: int, device_name: str) -> str:
     return f"{hostname}:{device_idx}:{device_name}"
 
 
+# --- gRPC Server ---
 class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
     async def Connect(self, request: profiler_pb2.InitialInfo, context):
         """Handle client connection and initial GPU info"""
@@ -131,12 +132,12 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
                             "nvlink_bw_gbps_tx": gpu_metric.nvlink_bw_gbps_tx,
                         }
                     )
-                
+
                 # Add system metrics if available
                 if metrics_update.HasField("system_metrics"):
                     payload["system_metrics"] = {
                         "dram_util": metrics_update.system_metrics.dram_util,
-                        "disk_util": metrics_update.system_metrics.disk_util
+                        "disk_util": metrics_update.system_metrics.disk_util,
                     }
 
                 for p2p_link in metrics_update.p2p_links:
@@ -350,11 +351,11 @@ async def collect_and_store_frame():
                     client_key = f"{client_hostname}"
                     current_frame["dram_util"].append(f"{system_metrics.get('dram_util', 0.0):.2f}")
                     current_frame["disk_util"].append(f"{system_metrics.get('disk_util', 0.0):.2f}")
-                    
+
                     # Accumulate for averages
-                    dram_util_value = float(system_metrics.get('dram_util', 0.0))
-                    disk_util_value = float(system_metrics.get('disk_util', 0.0))
-                    
+                    dram_util_value = float(system_metrics.get("dram_util", 0.0))
+                    disk_util_value = float(system_metrics.get("disk_util", 0.0))
+
                     state.dram_total_util[client_key] = state.dram_total_util.get(client_key, 0.0) + dram_util_value
                     state.dram_util_count[client_key] = state.dram_util_count.get(client_key, 0) + 1
                     state.disk_total_util[client_key] = state.disk_total_util.get(client_key, 0.0) + disk_util_value
@@ -386,7 +387,7 @@ async def collect_and_store_frame():
             if count > 0:
                 avg_dram = total_dram / count
                 summary_by_client.setdefault(client_key, {})["avg_dram_util"] = f"{avg_dram:.2f}"
-        
+
         for client_key, total_disk in state.disk_total_util.items():
             count = state.disk_util_count.get(client_key, 0)
             if count > 0:
