@@ -15,6 +15,8 @@ import nvitop
 from . import profiler_pb2
 from . import profiler_pb2_grpc
 
+from .utils import draw_gpu_metrics
+
 
 # --- Global State for Head Node ---
 class HeadNodeState:
@@ -177,8 +179,10 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             if request.name:
                 state.output_filename = f"{request.name}.json"
+                state.report_filename = f"{request.name}.png"
             else:
                 state.output_filename = f"gswarm_profiler_{timestamp}.json"
+                state.report_filename = f"gswarm_profiler_{timestamp}.png"
 
             # Clear stale data from previous runs or disconnected clients
             current_connected_ids = list(state.connected_clients.keys())
@@ -346,7 +350,7 @@ async def collect_and_store_frame():
             async with aiofiles.open(state.output_filename, mode="w") as f:
                 await f.write(json.dumps(output_data, indent=2))
             logger.info(f"Profiling data successfully saved to {state.output_filename}")
-
+            # TODO: Draw summary graphs and generate reports if needed
         except Exception as e:
             logger.error(f"Failed to save profiling data: {e}")
     else:

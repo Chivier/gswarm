@@ -79,8 +79,10 @@ async def start_profiling(request: StartProfilingRequest):
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             if request.name:
                 state.output_filename = f"{request.name}.json"
+                state.report_filename = f"{request.name}.png"
             else:
                 state.output_filename = f"gswarm_profiler_{timestamp}.json"
+                state.report_filename = f"gswarm_profiler_{timestamp}.png"
 
             # Clear stale data from previous runs or disconnected clients
             current_connected_ids = list(state.connected_clients.keys())
