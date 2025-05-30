@@ -8,7 +8,7 @@ version = "0.2.1"
 description = "Multi-node multi-GPU profiler"
 authors = [
     {name = "Chivier Humber", email = "chivier.humber@outlook.com"},
-    {name = "Anyin", email = "shizukuprprpr@gmail.com"},
+    {name = "cydia2001", email = "cydia2001@duck.com"},
 ]
 
 requires-python = ">=3.8"
