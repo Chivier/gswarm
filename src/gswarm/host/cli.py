@@ -15,7 +15,6 @@ def start(
     host: str = typer.Option("0.0.0.0", "--host", "-h", help="Host address to bind to"),
     enable_bandwidth: bool = typer.Option(False, "--enable-bandwidth", help="Enable bandwidth profiling"),
     enable_nvlink: bool = typer.Option(False, "--enable-nvlink", help="Enable NVLink profiling"),
-    freq: int = typer.Option(500, "--freq", "-f", help="Sampling frequency in milliseconds"),
 ):
     """Start the host node with all services"""
     logger.info(f"Starting host node on {host}")
@@ -24,7 +23,7 @@ def start(
     logger.info(f"  Model API port: {model_port}")
     logger.info(f"  Bandwidth profiling: {'enabled' if enable_bandwidth else 'disabled'}")
     logger.info(f"  NVLink profiling: {'enabled' if enable_nvlink else 'disabled'}")
-    logger.info(f"  Sampling frequency: {freq}ms")
+    logger.info(f"  Using adaptive sampling strategy (similar to WandB)")
     
     # Start both profiler and model services
     from ..profiler.head import run_head_node as run_profiler_head
@@ -35,7 +34,7 @@ def start(
         profiler_task = asyncio.create_task(
             asyncio.to_thread(
                 run_profiler_head, 
-                host, port, enable_bandwidth, enable_nvlink, freq, http_port
+                host, port, enable_bandwidth, enable_nvlink, http_port
             )
         )
         

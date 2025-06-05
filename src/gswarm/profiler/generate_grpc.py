@@ -17,7 +17,7 @@ def fix_imports_in_file(file_path: Path):
     # Fix the import in profiler_pb2_grpc.py that imports profiler_pb2
     content = re.sub(
         r"^import profiler_pb2 as profiler__pb2\b",
-        "from gswarm.profiler. import profiler_pb2 as profiler__pb2",
+        "from gswarm.profiler import profiler_pb2 as profiler__pb2",
         content,
         flags=re.MULTILINE,
     )

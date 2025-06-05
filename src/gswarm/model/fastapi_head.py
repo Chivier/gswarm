@@ -274,6 +274,11 @@ async def execute_job(job_id: str):
     logger.info(f"Job {job_id} completed")
 
 
+def create_app() -> FastAPI:
+    """Factory function to create and return the FastAPI app instance"""
+    return app
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8100) 

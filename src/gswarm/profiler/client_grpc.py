@@ -10,8 +10,9 @@ from rich.live import Live
 from rich.table import Table
 
 # Import generated protobuf classes
-from gswarm.profiler. import profiler_pb2
-from gswarm.profiler. import profiler_pb2_grpc
+from gswarm.profiler import profiler_pb2
+from gswarm.profiler import profiler_pb2_grpc
+from gswarm.profiler.adaptive_sampler import AdaptiveSampler
 
 
 def display_gpu_info(payload: Dict[str, Any]):
@@ -191,8 +192,10 @@ def dict_to_grpc_metrics_update(hostname: str, payload: Dict[str, Any]) -> profi
     return profiler_pb2.MetricsUpdate(hostname=hostname, gpus_metrics=gpu_metrics, p2p_links=p2p_links)
 
 
-async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: bool):
+async def run_client_node(head_address: str, enable_bandwidth: bool):
+    """Run client with adaptive sampling"""
     hostname = platform.node()
+    sampler = AdaptiveSampler()
 
     # Check if nvitop can find GPUs
     try:
@@ -217,7 +220,7 @@ async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: boo
         return
 
     logger.info(f"Attempting to connect to head node at {head_address} via gRPC")
-    logger.info(f"Client-side bandwidth data collection: {'Enabled' if enable_bandwidth else 'Disabled'}")
+    logger.info(f"Using adaptive sampling strategy")
 
     retry_delay = 5
     while True:  # Connection retry loop
@@ -236,13 +239,26 @@ async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: boo
                 logger.info(f"Connected to head node: {connect_response.message}")
                 retry_delay = 5  # Reset retry delay on successful connection
 
-                # Start streaming metrics
+                # Modified metrics generator with adaptive sampling
                 async def metrics_generator():
                     while True:
+                        # Check if we should sample GPU metrics
                         metrics_payload = await collect_gpu_metrics(enable_bandwidth)
-                        grpc_update = dict_to_grpc_metrics_update(hostname, metrics_payload)
-                        yield grpc_update
-                        await asyncio.sleep(freq_ms / 1000.0)
+                        
+                        # Let the sampler decide if we should send this update
+                        should_send = False
+                        for gpu in metrics_payload.get("gpus_metrics", []):
+                            if await sampler.should_sample("gpu_util", gpu["gpu_util"]):
+                                should_send = True
+                                sampler.update_metric("gpu_util", gpu["gpu_util"])
+                                break
+                        
+                        if should_send:
+                            grpc_update = dict_to_grpc_metrics_update(hostname, metrics_payload)
+                            yield grpc_update
+                        
+                        # Adaptive sleep based on metric activity
+                        await asyncio.sleep(1.0)  # Base rate, will be throttled by sampler
 
                 # Create live display and stream metrics
                 metrics_payload = {}
@@ -270,9 +286,10 @@ async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: boo
         retry_delay = min(retry_delay * 2, 60)  # Exponential backoff up to 60s
 
 
-def start_client_node_sync(head_address: str, freq_ms: int, enable_bandwidth_client: bool):
+def start_client_node_sync(head_address: str, enable_bandwidth_client: bool):
+    # Remove freq_ms parameter
     try:
-        asyncio.run(run_client_node(head_address, freq_ms, enable_bandwidth_client))
+        asyncio.run(run_client_node(head_address, enable_bandwidth_client))
     except KeyboardInterrupt:
         logger.info("Client shutdown requested.")
     finally:

@@ -15,8 +15,9 @@ from rich.panel import Panel
 
 # Import generated protobuf classes
 try:
-    from gswarm.profiler. import profiler_pb2
-    from gswarm.profiler. import profiler_pb2_grpc
+    from gswarm.profiler import profiler_pb2
+    from gswarm.profiler import profiler_pb2_grpc
+    from gswarm.profiler.adaptive_sampler import AdaptiveSampler
 except ImportError:
     logger.error("gRPC protobuf files not found. Please run 'python generate_grpc.py' first.")
     raise
@@ -212,8 +213,13 @@ def dict_to_grpc_metrics_update(hostname: str, payload: Dict[str, Any]) -> profi
     )
 
 
-async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: bool):
+async def run_client_node(head_address: str, enable_bandwidth: bool):
     hostname = platform.node()
+    
+    # These will be set from host config
+    freq_ms = 200  # Default
+    use_adaptive = False
+    adaptive_sampler = None
 
     # Check if nvitop can find GPUs
     try:
@@ -256,15 +262,70 @@ async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: boo
 
                 logger.info(f"Connected to head node: {connect_response.message}")
                 retry_delay = 5  # Reset retry delay on successful connection
+                
+                # Get configuration from host
+                try:
+                    status = await stub.GetStatus(profiler_pb2.Empty())
+                    freq_ms = status.freq if status.freq > 0 else 0
+                    use_adaptive = (status.freq == 0)
+                    enable_bandwidth = status.enable_bandwidth_profiling
+                    
+                    if use_adaptive:
+                        adaptive_sampler = AdaptiveSampler()
+                        logger.info("Using adaptive sampling strategy (configured by host)")
+                    else:
+                        logger.info(f"Using fixed frequency sampling: {freq_ms}ms (configured by host)")
+                    
+                    logger.info(f"Bandwidth profiling: {'enabled' if enable_bandwidth else 'disabled'} (configured by host)")
+                except Exception as e:
+                    logger.warning(f"Failed to get host config: {e}. Using defaults.")
 
                 # Start streaming metrics
                 async def metrics_generator():
                     while True:
                         try:
                             metrics_payload = await collect_gpu_metrics(enable_bandwidth)
-                            grpc_update = dict_to_grpc_metrics_update(hostname, metrics_payload)
-                            yield grpc_update
-                            await asyncio.sleep(freq_ms / 1000.0)
+                            
+                            if use_adaptive:
+                                # Check if we should sample based on adaptive strategy
+                                should_sample = False
+                                
+                                # Check GPU utilization changes
+                                for gpu in metrics_payload.get("gpus_metrics", []):
+                                    if await adaptive_sampler.should_sample("gpu_util", gpu["gpu_util"]):
+                                        should_sample = True
+                                        adaptive_sampler.update_metric("gpu_util", gpu["gpu_util"])
+                                    if await adaptive_sampler.should_sample("memory", gpu["mem_util"]):
+                                        should_sample = True
+                                        adaptive_sampler.update_metric("memory", gpu["mem_util"])
+                                
+                                # Check bandwidth changes if enabled
+                                if enable_bandwidth:
+                                    for gpu in metrics_payload.get("gpus_metrics", []):
+                                        total_bw = gpu.get("dram_bw_gbps_rx", 0) + gpu.get("dram_bw_gbps_tx", 0)
+                                        if await adaptive_sampler.should_sample("bandwidth", total_bw):
+                                            should_sample = True
+                                            adaptive_sampler.update_metric("bandwidth", total_bw)
+                                
+                                # Check system metrics
+                                system_metrics = metrics_payload.get("system_metrics", {})
+                                if await adaptive_sampler.should_sample("system", system_metrics.get("dram_util", 0)):
+                                    should_sample = True
+                                    adaptive_sampler.update_metric("system", system_metrics.get("dram_util", 0))
+                                
+                                if should_sample:
+                                    grpc_update = dict_to_grpc_metrics_update(hostname, metrics_payload)
+                                    grpc_update.timestamp = time.time()
+                                    yield grpc_update
+                                
+                                await asyncio.sleep(0.2)  # Minimum 200ms interval
+                            else:
+                                # Fixed frequency sampling
+                                grpc_update = dict_to_grpc_metrics_update(hostname, metrics_payload)
+                                grpc_update.timestamp = time.time()
+                                yield grpc_update
+                                await asyncio.sleep(freq_ms / 1000.0)
+                                
                         except Exception as e:
                             logger.error(f"Error in metrics generator: {e}")
                             break
@@ -282,7 +343,8 @@ async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: boo
                             try:
                                 metrics_payload = await collect_gpu_metrics(enable_bandwidth)
                                 live.update(display_gpu_info(metrics_payload))
-                                await asyncio.sleep(freq_ms / 1000.0)
+                                # Display updates at fixed rate regardless of sampling mode
+                                await asyncio.sleep(0.25)  # 4Hz display update
                             except Exception as e:
                                 logger.error(f"Error updating display: {e}")
                                 break
@@ -312,9 +374,10 @@ async def run_client_node(head_address: str, freq_ms: int, enable_bandwidth: boo
         retry_delay = min(retry_delay * 2, 60)  # Exponential backoff up to 60s
 
 
-def start_client_node_sync(head_address: str, freq_ms: int, enable_bandwidth_client: bool):
+def start_client_node_sync(head_address: str, enable_bandwidth_client: bool):
+    """Start client node - configuration will be read from host"""
     try:
-        asyncio.run(run_client_node(head_address, freq_ms, enable_bandwidth_client))
+        asyncio.run(run_client_node(head_address, enable_bandwidth_client))
     except KeyboardInterrupt:
         logger.info("Client shutdown requested.")
     finally:

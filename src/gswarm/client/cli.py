@@ -10,7 +10,7 @@ app = typer.Typer(help="Client node management commands")
 def connect(
     host_address: str = typer.Argument(..., help="Host node address (e.g., master:8090)"),
     resilient: bool = typer.Option(False, "--resilient", "-r", help="Enable resilient mode with auto-reconnect"),
-    enable_bandwidth: bool = typer.Option(None, "--enable-bandwidth", help="Enable bandwidth profiling"),
+    enable_bandwidth: bool = typer.Option(None, "--enable-bandwidth", help="Enable bandwidth profiling (can be overridden by host)"),
     node_id: Optional[str] = typer.Option(None, "--node-id", "-n", help="Custom node ID"),
 ):
     """Connect this node as a client to the host"""
@@ -20,6 +20,8 @@ def connect(
         logger.info(f"  Bandwidth profiling: {'enabled' if enable_bandwidth else 'disabled'}")
     if node_id:
         logger.info(f"  Node ID: {node_id}")
+    
+    logger.info("  Sampling configuration will be read from host")
     
     # Parse host address
     if ':' in host_address:
@@ -44,7 +46,7 @@ def connect(
     if resilient:
         start_resilient_client(host_address, enable_bandwidth)
     else:
-        start_client_node_sync(host_address, 500, enable_bandwidth)
+        start_client_node_sync(host_address, enable_bandwidth)
 
 @app.command()
 def disconnect():

@@ -14,11 +14,12 @@ import time
 import sys
 from gswarm.profiler.session_manager import SessionManager, ProfilingSession
 from gswarm.profiler.persistence import FileBasedStorage
+from gswarm.profiler.adaptive_sampler import AdaptiveSampler
 
 # Import generated protobuf classes (these will be generated)
 try:
-    from gswarm.profiler. import profiler_pb2
-    from gswarm.profiler. import profiler_pb2_grpc
+    from gswarm.profiler import profiler_pb2
+    from gswarm.profiler import profiler_pb2_grpc
 except ImportError:
     logger.error("gRPC protobuf files not found. Please run 'python generate_grpc.py' first.")
     raise
@@ -40,11 +41,13 @@ class HeadNodeState:
         self.output_filename: str = ""
         self.report_filename: str = ""
         self.frame_id_counter: int = 0
-        self.freq: int = 500
         self.data_lock = asyncio.Lock()
         self.profiling_task: asyncio.Task = None
         self.enable_bandwidth_profiling: bool = False
         self.enable_nvlink_profiling: bool = False
+        
+        # Sampling configuration
+        self.freq: int = 200  # Default 200ms, 0 for adaptive
 
         # New state for accumulated stats per device
         self.dram_total_util: Dict[str, float] = {}
@@ -62,6 +65,7 @@ class HeadNodeState:
         self.active_sessions: Dict[str, ProfilingSession] = {}
         self.client_last_seen: Dict[str, float] = {}
         self.client_health_timeout = 30  # seconds
+        self.adaptive_sampler = AdaptiveSampler()
 
 
 state = HeadNodeState()
@@ -483,7 +487,7 @@ async def run_both_servers(grpc_host: str, grpc_port: int, http_host: str, http_
             pass
 
 
-def run_head_node(host: str, port: int, enable_bandwidth: bool, enable_nvlink: bool, freq: int, http_port: int = None):
+def run_head_node(host: str, port: int, enable_bandwidth: bool, enable_nvlink: bool, http_port: int = None, freq: int = 200):
     """Run the head node with gRPC server and optionally HTTP server"""
     # Check port availability before starting
     if not check_port_availability(host, port):
@@ -502,9 +506,16 @@ def run_head_node(host: str, port: int, enable_bandwidth: bool, enable_nvlink: b
     if http_port:
         logger.info(f"HTTP API will be available on {host}:{http_port}")
     logger.info(f"Bandwidth profiling: {'Enabled' if enable_bandwidth else 'Disabled'}")
+    
+    # Set sampling configuration
+    state.freq = freq
+    if freq == 0:
+        logger.info(f"Using adaptive sampling strategy (similar to WandB)")
+    else:
+        logger.info(f"Using fixed frequency sampling: {freq}ms")
+    
     state.enable_bandwidth_profiling = enable_bandwidth
     state.enable_nvlink_profiling = enable_nvlink
-    state.freq = freq
 
     # Log own GPUs if any for information
     try:

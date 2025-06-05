@@ -16,13 +16,13 @@ def fix_imports_in_file(file_path: Path):
         original_content = content
 
         # Fix direct imports of profiler_pb2 and profiler_pb2_grpc to use relative imports
-        content = re.sub(r"^import profiler_pb2\b", "from gswarm.profiler. import profiler_pb2", content, flags=re.MULTILINE)
-        content = re.sub(r"^import profiler_pb2_grpc\b", "from gswarm.profiler. import profiler_pb2_grpc", content, flags=re.MULTILINE)
+        content = re.sub(r"^import profiler_pb2\b", "from gswarm.profiler import profiler_pb2", content, flags=re.MULTILINE)
+        content = re.sub(r"^import profiler_pb2_grpc\b", "from gswarm.profiler import profiler_pb2_grpc", content, flags=re.MULTILINE)
 
         # Fix the import in profiler_pb2_grpc.py that imports profiler_pb2
         content = re.sub(
             r"^import profiler_pb2 as profiler__pb2\b",
-            "from gswarm.profiler. import profiler_pb2 as profiler__pb2",
+            "from gswarm.profiler import profiler_pb2 as profiler__pb2",
             content,
             flags=re.MULTILINE,
         )

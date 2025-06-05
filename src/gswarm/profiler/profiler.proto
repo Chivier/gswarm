@@ -44,6 +44,7 @@ message MetricsUpdate {
     repeated GPUMetric gpus_metrics = 2;
     repeated P2PLink p2p_links = 3;
     SystemMetrics system_metrics = 4;  // Add system metrics
+    double timestamp = 5;  // Unix timestamp when the metrics were collected
 }
 
 message ConnectResponse {

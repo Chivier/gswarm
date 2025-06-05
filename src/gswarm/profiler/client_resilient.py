@@ -12,19 +12,23 @@ from collections import deque
 from loguru import logger
 from datetime import datetime
 
-from gswarm.profiler. import profiler_pb2
-from gswarm.profiler. import profiler_pb2_grpc
+from gswarm.profiler import profiler_pb2
+from gswarm.profiler import profiler_pb2_grpc
 from gswarm.profiler.client import collect_gpu_metrics, dict_to_grpc_metrics_update
+from gswarm.profiler.adaptive_sampler import AdaptiveSampler
 
 
 class ResilientClient:
     """Client with automatic reconnection and data buffering"""
 
-    def __init__(self, head_address: str, freq_ms: int, enable_bandwidth: bool):
+    def __init__(self, head_address: str, enable_bandwidth: bool):
         self.head_address = head_address
-        self.freq_ms = freq_ms
         self.enable_bandwidth = enable_bandwidth
         self.hostname = platform.node()
+        
+        # Sampling configuration from host
+        self.freq_ms = 200  # Default until we get config from host
+        self.use_adaptive = False
 
         # Connection state
         self.connected = False
@@ -35,6 +39,10 @@ class ResilientClient:
         # Buffering
         self.buffer = deque(maxlen=10000)  # Buffer up to 10k frames
         self.buffer_lock = asyncio.Lock()
+        
+        # Historical data storage for adaptive sampling
+        self.metrics_history = deque(maxlen=1000)  # Store last 1000 metrics with timestamps
+        self.history_lock = asyncio.Lock()
 
         # Reconnection parameters
         self.reconnect_delay = 1  # Start with 1 second
@@ -48,6 +56,9 @@ class ResilientClient:
         # Initialize GPU info
         self.gpu_infos = []
         self._init_gpu_info()
+        
+        # Adaptive sampler (initialized when needed)
+        self.adaptive_sampler = None
 
     def _init_gpu_info(self):
         """Initialize GPU information"""
@@ -65,6 +76,27 @@ class ResilientClient:
         except Exception as e:
             logger.error(f"Error initializing GPUs: {e}")
             raise
+
+    async def _get_host_config(self) -> bool:
+        """Get sampling configuration from host"""
+        try:
+            status = await self.stub.GetStatus(profiler_pb2.Empty())
+            self.freq_ms = status.freq if status.freq > 0 else 0
+            self.use_adaptive = (status.freq == 0)
+            
+            if self.use_adaptive and not self.adaptive_sampler:
+                self.adaptive_sampler = AdaptiveSampler()
+                logger.info("Using adaptive sampling strategy (configured by host)")
+            elif not self.use_adaptive:
+                logger.info(f"Using fixed frequency sampling: {self.freq_ms}ms (configured by host)")
+            
+            # Also get bandwidth config from host
+            self.enable_bandwidth = status.enable_bandwidth_profiling
+            
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to get host config: {e}. Using defaults.")
+            return False
 
     async def connect(self) -> bool:
         """Establish connection to head node"""
@@ -94,6 +126,9 @@ class ResilientClient:
             logger.info(f"Connected successfully: {connect_response.message}")
             self.connected = True
             self.reconnect_delay = 1  # Reset delay on successful connection
+            
+            # Get configuration from host
+            await self._get_host_config()
 
             # Start metrics streaming
             await self._start_streaming()
@@ -111,8 +146,15 @@ class ResilientClient:
             # Create async generator for metrics
             async def metrics_generator():
                 sent_count = 0
+                last_config_check = time.time()
+                
                 while self.running and self.connected:
                     try:
+                        # Periodically check for config updates from host
+                        if time.time() - last_config_check > 30:  # Check every 30 seconds
+                            await self._get_host_config()
+                            last_config_check = time.time()
+                        
                         # First, try to send buffered data if any
                         async with self.buffer_lock:
                             while self.buffer and self.connected:
@@ -124,13 +166,58 @@ class ResilientClient:
                                 if sent_count % 100 == 0:
                                     await asyncio.sleep(0.001)
 
-                        # Then send latest metric
-                        metrics_payload = await collect_gpu_metrics(self.enable_bandwidth)
-                        grpc_update = dict_to_grpc_metrics_update(self.hostname, metrics_payload)
-                        grpc_update.timestamp = time.time()  # Add timestamp
-                        yield grpc_update
-
-                        await asyncio.sleep(self.freq_ms / 1000.0)
+                        # For adaptive sampling, let the sampler decide
+                        if self.use_adaptive:
+                            # Check if we should sample based on adaptive strategy
+                            should_sample = False
+                            metrics_payload = await collect_gpu_metrics(self.enable_bandwidth)
+                            
+                            # Check GPU utilization changes
+                            for gpu in metrics_payload.get("gpus_metrics", []):
+                                if await self.adaptive_sampler.should_sample("gpu_util", gpu["gpu_util"]):
+                                    should_sample = True
+                                    self.adaptive_sampler.update_metric("gpu_util", gpu["gpu_util"])
+                                if await self.adaptive_sampler.should_sample("memory", gpu["mem_util"]):
+                                    should_sample = True
+                                    self.adaptive_sampler.update_metric("memory", gpu["mem_util"])
+                            
+                            # Check bandwidth changes if enabled
+                            if self.enable_bandwidth:
+                                for gpu in metrics_payload.get("gpus_metrics", []):
+                                    total_bw = gpu.get("dram_bw_gbps_rx", 0) + gpu.get("dram_bw_gbps_tx", 0)
+                                    if await self.adaptive_sampler.should_sample("bandwidth", total_bw):
+                                        should_sample = True
+                                        self.adaptive_sampler.update_metric("bandwidth", total_bw)
+                            
+                            if should_sample:
+                                grpc_update = dict_to_grpc_metrics_update(self.hostname, metrics_payload)
+                                grpc_update.timestamp = time.time()
+                                yield grpc_update
+                                
+                                # Store in history
+                                async with self.history_lock:
+                                    self.metrics_history.append({
+                                        "timestamp": grpc_update.timestamp,
+                                        "metrics": metrics_payload
+                                    })
+                            
+                            # Adaptive sleep - minimum interval from sampler configs
+                            await asyncio.sleep(0.2)  # 200ms minimum
+                        else:
+                            # Fixed frequency sampling
+                            metrics_payload = await collect_gpu_metrics(self.enable_bandwidth)
+                            grpc_update = dict_to_grpc_metrics_update(self.hostname, metrics_payload)
+                            grpc_update.timestamp = time.time()
+                            yield grpc_update
+                            
+                            # Store in history
+                            async with self.history_lock:
+                                self.metrics_history.append({
+                                    "timestamp": grpc_update.timestamp,
+                                    "metrics": metrics_payload
+                                })
+                            
+                            await asyncio.sleep(self.freq_ms / 1000.0)
 
                     except asyncio.CancelledError:
                         raise
@@ -168,19 +255,57 @@ class ResilientClient:
         """Continuously collect metrics and buffer if disconnected"""
         while self.running:
             try:
-                # Collect metrics
-                metrics_payload = await collect_gpu_metrics(self.enable_bandwidth)
-                grpc_update = dict_to_grpc_metrics_update(self.hostname, metrics_payload)
-                grpc_update.timestamp = time.time()
+                if self.use_adaptive:
+                    # For adaptive mode, check if we should collect
+                    should_collect = False
+                    metrics_payload = await collect_gpu_metrics(self.enable_bandwidth)
+                    
+                    # Check for significant changes
+                    for gpu in metrics_payload.get("gpus_metrics", []):
+                        if await self.adaptive_sampler.should_sample("gpu_util", gpu["gpu_util"]):
+                            should_collect = True
+                            break
+                    
+                    if should_collect or not self.connected:
+                        grpc_update = dict_to_grpc_metrics_update(self.hostname, metrics_payload)
+                        grpc_update.timestamp = time.time()
+                        
+                        # Store in history
+                        async with self.history_lock:
+                            self.metrics_history.append({
+                                "timestamp": grpc_update.timestamp,
+                                "metrics": metrics_payload
+                            })
+                        
+                        # If not connected, buffer the data
+                        if not self.connected:
+                            async with self.buffer_lock:
+                                self.buffer.append(grpc_update)
+                                if len(self.buffer) == self.buffer.maxlen:
+                                    logger.warning("Buffer full, dropping oldest metrics")
+                    
+                    await asyncio.sleep(0.2)  # Check every 200ms
+                else:
+                    # Fixed frequency mode
+                    metrics_payload = await collect_gpu_metrics(self.enable_bandwidth)
+                    grpc_update = dict_to_grpc_metrics_update(self.hostname, metrics_payload)
+                    grpc_update.timestamp = time.time()
+                    
+                    # Store in history
+                    async with self.history_lock:
+                        self.metrics_history.append({
+                            "timestamp": grpc_update.timestamp,
+                            "metrics": metrics_payload
+                        })
 
-                # If not connected, buffer the data
-                if not self.connected:
-                    async with self.buffer_lock:
-                        self.buffer.append(grpc_update)
-                        if len(self.buffer) == self.buffer.maxlen:
-                            logger.warning("Buffer full, dropping oldest metrics")
+                    # If not connected, buffer the data
+                    if not self.connected:
+                        async with self.buffer_lock:
+                            self.buffer.append(grpc_update)
+                            if len(self.buffer) == self.buffer.maxlen:
+                                logger.warning("Buffer full, dropping oldest metrics")
 
-                await asyncio.sleep(self.freq_ms / 1000.0)
+                    await asyncio.sleep(self.freq_ms / 1000.0)
 
             except Exception as e:
                 logger.error(f"Error collecting metrics: {e}")
@@ -249,13 +374,29 @@ class ResilientClient:
                     pickle.dump(list(self.buffer), f)
             except Exception as e:
                 logger.error(f"Failed to save buffered metrics: {e}")
+        
+        # Save historical data
+        if self.metrics_history:
+            logger.info(f"Saving {len(self.metrics_history)} historical metrics to disk")
+            try:
+                import pickle
+                
+                with open(f"metrics_history_{self.hostname}_{int(time.time())}.pkl", "wb") as f:
+                    pickle.dump(list(self.metrics_history), f)
+            except Exception as e:
+                logger.error(f"Failed to save historical metrics: {e}")
 
         logger.info("Client shutdown complete")
 
 
-def start_resilient_client(head_address: str, freq_ms: int, enable_bandwidth: bool):
-    """Start the resilient client"""
-    client = ResilientClient(head_address, freq_ms, enable_bandwidth)
+def start_resilient_client(head_address: str, enable_bandwidth: bool):
+    """Start the resilient client
+    
+    Args:
+        head_address: Address of the head node
+        enable_bandwidth: Whether to collect bandwidth metrics (can be overridden by host)
+    """
+    client = ResilientClient(head_address, enable_bandwidth)
 
     try:
         asyncio.run(client.run())
