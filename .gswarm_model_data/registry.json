@@ -1,0 +1,107 @@
+{
+  "models": {},
+  "nodes": {
+    "worker1": {
+      "node_id": "worker1",
+      "hostname": "gala1-G482-Z54-00",
+      "ip_address": "129.215.164.41",
+      "storage_devices": {
+        "disk": {
+          "total": 1872419778560,
+          "used": 1496762060800,
+          "available": 280468512768
+        },
+        "dram": {
+          "total": 1082050273280,
+          "used": 62825529344,
+          "available": 1008034521088
+        },
+        "gpu0": {
+          "total": 25757220864,
+          "used": 17342726144,
+          "available": 8414494720
+        },
+        "gpu1": {
+          "total": 25757220864,
+          "used": 24915542016,
+          "available": 841678848
+        },
+        "gpu2": {
+          "total": 25757220864,
+          "used": 446627840,
+          "available": 25310593024
+        },
+        "gpu3": {
+          "total": 25757220864,
+          "used": 446627840,
+          "available": 25310593024
+        },
+        "gpu4": {
+          "total": 25757220864,
+          "used": 446627840,
+          "available": 25310593024
+        },
+        "gpu5": {
+          "total": 25757220864,
+          "used": 446627840,
+          "available": 25310593024
+        },
+        "gpu6": {
+          "total": 25757220864,
+          "used": 12510887936,
+          "available": 13246332928
+        },
+        "gpu7": {
+          "total": 25757220864,
+          "used": 9226747904,
+          "available": 16530472960
+        }
+      },
+      "gpu_info": [
+        {
+          "physical_idx": 0,
+          "name": "NVIDIA RTX A5000",
+          "id": "gpu0"
+        },
+        {
+          "physical_idx": 1,
+          "name": "NVIDIA RTX A5000",
+          "id": "gpu1"
+        },
+        {
+          "physical_idx": 2,
+          "name": "NVIDIA RTX A5000",
+          "id": "gpu2"
+        },
+        {
+          "physical_idx": 3,
+          "name": "NVIDIA RTX A5000",
+          "id": "gpu3"
+        },
+        {
+          "physical_idx": 4,
+          "name": "NVIDIA RTX A5000",
+          "id": "gpu4"
+        },
+        {
+          "physical_idx": 5,
+          "name": "NVIDIA RTX A5000",
+          "id": "gpu5"
+        },
+        {
+          "physical_idx": 6,
+          "name": "NVIDIA RTX A5000",
+          "id": "gpu6"
+        },
+        {
+          "physical_idx": 7,
+          "name": "NVIDIA RTX A5000",
+          "id": "gpu7"
+        }
+      ],
+      "last_seen": "2025-06-05 16:52:53.028750",
+      "is_online": true
+    }
+  },
+  "timestamp": "2025-06-05T16:52:53.028868"
+}

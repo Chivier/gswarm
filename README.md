@@ -18,8 +18,28 @@ Key features:
 - Fault tolerance with automatic reconnection and data persistence
 - Session recovery after crashes
 - Client-side buffering for network interruptions
+- **Integration with gswarm-model**: Provides GPU device information to the model management system
 
 Ideal for debugging performance issues in distributed deep learning workloads, cluster monitoring, and resource optimization in multi-node GPU environments.
+
+## Port Configuration
+
+gswarm-profiler uses the following default ports:
+- **gRPC Server**: 8090 (for high-performance metric streaming)
+- **HTTP API**: 8091 (for control panel integration)
+
+**Note**: gswarm-model uses ports 9010/9011 to avoid conflicts with gswarm-profiler.
+
+## GSwarm Ecosystem Integration
+
+gswarm-profiler integrates seamlessly with other GSwarm components:
+
+### gswarm-model Integration
+- **Automatic GPU Detection**: gswarm-model automatically detects if gswarm-profiler is running and uses it for comprehensive GPU information
+- **Enhanced Device Information**: When gswarm-profiler is available, gswarm-model gets detailed GPU specifications and real-time status
+- **Fallback Support**: If gswarm-profiler is not running, gswarm-model falls back to basic NVML detection
+
+This integration eliminates the need for hardcoded GPU assumptions and provides more accurate device information for model management.
 
 ## Installation
 

@@ -51,18 +51,18 @@ def ensure_grpc_files():
 @app.command(
     name="start",
     help="Start the head node (model management coordinator).",
-    epilog="Example: gsmodel start --host 0.0.0.0 --port 8090 --http-port 8080",
+    epilog="Example: gsmodel start --host 0.0.0.0 --port 9010 --http-port 9011",
 )
 def start_head_node(
     host: Annotated[str, typer.Option(help="Host address for the head node.")] = "localhost",
-    port: Annotated[int, typer.Option(help="Port for the head node gRPC server.")] = 8090,
-    http_port: Annotated[int, typer.Option(help="Port for HTTP API server.")] = 8080,
+    port: Annotated[int, typer.Option(help="Port for the head node gRPC server.")] = 9010,
+    http_port: Annotated[int, typer.Option(help="Port for HTTP API server.")] = 9011,
     background: Annotated[bool, typer.Option("--background", help="Run head node in background mode.")] = False,
     data_dir: Annotated[str, typer.Option(help="Directory for storing persistent data.")] = ".gswarm_model_data",
 ):
     """
     Start the head node server for model management.
-    Example: gsmodel start --port 8090 --http-port 8080
+    Example: gsmodel start --port 9010 --http-port 9011
     """
     
     # Ensure gRPC files exist before starting
@@ -102,15 +102,15 @@ def start_head_node(
 @app.command(
     name="connect",
     help="Connect this node as a client to the head node.",
-    epilog="Example: gsmodel connect localhost:8090 --node-id worker1",
+    epilog="Example: gsmodel connect localhost:9010 --node-id worker1",
 )
 def connect_client_node(
-    head_address: Annotated[str, typer.Argument(help="Address of the head node (e.g., localhost:8090).")],
+    head_address: Annotated[str, typer.Argument(help="Address of the head node (e.g., localhost:9010).")],
     node_id: Annotated[str, typer.Option("--node-id", help="Unique identifier for this client node")] = None,
 ):
     """
     Connect this node as a client to the head node.
-    Example: gsmodel connect localhost:8090 --node-id worker1
+    Example: gsmodel connect localhost:9010 --node-id worker1
     """
     
     # Ensure gRPC files exist before connecting
@@ -141,7 +141,7 @@ def register_model(
     source_url: Annotated[str, typer.Option("--url", help="Source URL (e.g., HuggingFace repository)")] = None,
     description: Annotated[str, typer.Option("--desc", help="Model description")] = None,
     tags: Annotated[List[str], typer.Option("--tag", help="Model tags")] = None,
-    head_address: Annotated[str, typer.Option("--head", help="Head node address")] = "localhost:8080",
+    head_address: Annotated[str, typer.Option("--head", help="Head node address")] = "localhost:9011",
 ):
     """
     Register a new model in the system.
@@ -176,10 +176,10 @@ def register_model(
 @app.command(
     name="list",
     help="List all registered models.",
-    epilog="Example: gsmodel list --head localhost:8080",
+    epilog="Example: gsmodel list --head localhost:9011",
 )
 def list_models(
-    head_address: Annotated[str, typer.Option("--head", help="Head node HTTP address")] = "localhost:8080",
+    head_address: Annotated[str, typer.Option("--head", help="Head node HTTP address")] = "localhost:9011",
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Show detailed information")] = False,
 ):
     """
@@ -222,7 +222,7 @@ def list_models(
 )
 def get_model_info(
     model_name: Annotated[str, typer.Argument(help="Name of the model.")],
-    head_address: Annotated[str, typer.Option("--head", help="Head node HTTP address")] = "localhost:8080",
+    head_address: Annotated[str, typer.Option("--head", help="Head node HTTP address")] = "localhost:9011",
 ):
     """
     Get detailed information about a specific model.
@@ -278,7 +278,7 @@ def get_model_info(
 )
 def unregister_model(
     model_name: Annotated[str, typer.Argument(help="Name of the model to unregister.")],
-    head_address: Annotated[str, typer.Option("--head", help="Head node HTTP address")] = "localhost:8080",
+    head_address: Annotated[str, typer.Option("--head", help="Head node HTTP address")] = "localhost:9011",
     force: Annotated[bool, typer.Option("--force", help="Force removal without confirmation")] = False,
 ):
     """
@@ -321,7 +321,7 @@ def unregister_model(
 )
 def create_job(
     job_file: Annotated[str, typer.Argument(help="YAML file containing job definition.")],
-    head_address: Annotated[str, typer.Option("--head", help="Head node HTTP address")] = "localhost:8080",
+    head_address: Annotated[str, typer.Option("--head", help="Head node HTTP address")] = "localhost:9011",
     wait: Annotated[bool, typer.Option("--wait", help="Wait for job completion")] = False,
 ):
     """
@@ -363,7 +363,7 @@ def create_job(
     epilog="Example: gsmodel jobs",
 )
 def list_jobs(
-    head_address: Annotated[str, typer.Option("--head", help="Head node HTTP address")] = "localhost:8080",
+    head_address: Annotated[str, typer.Option("--head", help="Head node HTTP address")] = "localhost:9011",
     status: Annotated[str, typer.Option("--status", help="Filter by status")] = None,
 ):
     """
@@ -407,7 +407,7 @@ def list_jobs(
 )
 def get_job_status(
     job_id: Annotated[str, typer.Argument(help="Job ID.")],
-    head_address: Annotated[str, typer.Option("--head", help="Head node HTTP address")] = "localhost:8080",
+    head_address: Annotated[str, typer.Option("--head", help="Head node HTTP address")] = "localhost:9011",
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Show action details")] = False,
 ):
     """
@@ -489,7 +489,7 @@ def wait_for_job_completion(job_id: str, head_address: str):
     epilog="Example: gsmodel status",
 )
 def get_system_status(
-    head_address: Annotated[str, typer.Option("--head", help="Head node HTTP address")] = "localhost:8080",
+    head_address: Annotated[str, typer.Option("--head", help="Head node HTTP address")] = "localhost:9011",
 ):
     """
     Get system-wide status.
@@ -523,7 +523,7 @@ def get_system_status(
     epilog="Example: gsmodel nodes",
 )
 def list_nodes(
-    head_address: Annotated[str, typer.Option("--head", help="Head node HTTP address")] = "localhost:8080",
+    head_address: Annotated[str, typer.Option("--head", help="Head node HTTP address")] = "localhost:9011",
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Show detailed information")] = False,
 ):
     """
@@ -621,14 +621,14 @@ def generate_examples(
                 "action_id": "serve_model",
                 "action_type": "serve",
                 "model_name": "llama-7b-chat",
-                "port": 8080,
+                "port": 9080,
                 "devices": ["node1:gpu0"],
                 "dependencies": ["move_to_gpu"]
             },
             {
                 "action_id": "health_check",
                 "action_type": "health_check",
-                "target_url": "http://node1:8080/health",
+                "target_url": "http://node1:9080/health",
                 "devices": [],
                 "dependencies": ["serve_model"]
             }
@@ -678,7 +678,7 @@ def generate_examples(
                 "action_id": "serve_llama",
                 "action_type": "serve",
                 "model_name": "llama-7b",
-                "port": 8080,
+                "port": 9080,
                 "devices": ["node1:gpu0"],
                 "dependencies": ["load_llama_gpu"]
             },
@@ -686,7 +686,7 @@ def generate_examples(
                 "action_id": "serve_diffusion",
                 "action_type": "serve",
                 "model_name": "stable-diffusion-xl",
-                "port": 8081,
+                "port": 9081,
                 "devices": ["node2:gpu0"],
                 "dependencies": ["load_diffusion_gpu"]
             }

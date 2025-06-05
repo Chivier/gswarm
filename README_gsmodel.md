@@ -11,6 +11,7 @@ A distributed model storage and management system for GPU clusters, designed to 
 - **REST API**: Complete HTTP API for integration and automation
 - **gRPC Communication**: High-performance inter-node communication
 - **Automatic Persistence**: State persistence and recovery
+- **Smart GPU Detection**: Automatic detection of gswarm-profiler for enhanced GPU information, with nvml fallback
 
 ### 📦 Model Operations
 - **Download**: Fetch models from web sources (HuggingFace, etc.)
@@ -39,11 +40,20 @@ The system follows a head-client architecture:
 - `dram`: System memory (RAM)
 - `gpu0`, `gpu1`: GPU memory
 
+### GPU Detection
+
+GSwarm Model automatically detects available GPUs using the following priority:
+
+1. **gswarm-profiler Integration**: If gswarm-profiler is running, gsmodel will use it to get comprehensive GPU information
+2. **NVML Fallback**: If gswarm-profiler is not available, falls back to nvitop/NVML for basic GPU detection
+3. **Dynamic Memory Detection**: Automatically detects actual GPU memory capacity instead of using hardcoded values
+
 ## Installation
 
 ### Prerequisites
 - Python 3.8+
 - gRPC tools for protocol buffer generation
+- NVIDIA drivers (for GPU support)
 
 ### Install Dependencies
 
@@ -68,24 +78,26 @@ gsmodel generate-grpc
 
 ```bash
 # Start the head node with both gRPC and HTTP APIs
-gsmodel start --host 0.0.0.0 --port 8090 --http-port 8080
+gsmodel start --host 0.0.0.0 --port 9010 --http-port 9011
 
 # Or run in background
-gsmodel start --background --port 8090 --http-port 8080
+gsmodel start --background --port 9010 --http-port 9011
 ```
 
 The head node provides:
-- **gRPC server**: `localhost:8090` (for client nodes)
-- **HTTP API**: `http://localhost:8080` (for management)
+- **gRPC server**: `localhost:9010` (for client nodes)
+- **HTTP API**: `http://localhost:9011` (for management)
+
+**Note**: Default ports have been changed to 9010/9011 to avoid conflicts with gswarm-profiler (which uses 8090/8091).
 
 ### 2. Connect Client Nodes
 
 ```bash
 # Connect a client node to the head node
-gsmodel connect localhost:8090 --node-id worker1
+gsmodel connect localhost:9010 --node-id worker1
 
 # On another machine
-gsmodel connect head_node_ip:8090 --node-id worker2
+gsmodel connect head_node_ip:9010 --node-id worker2
 ```
 
 ### 3. Register a Model
@@ -127,7 +139,7 @@ gsmodel start --data-dir /path/to/data
 gsmodel connect HEAD_ADDRESS [--node-id NODE_ID]
 
 # Example
-gsmodel connect 192.168.1.100:8090 --node-id gpu-worker-01
+gsmodel connect 192.168.1.100:9010 --node-id gpu-worker-01
 ```
 
 ### Model Management
@@ -198,13 +210,13 @@ actions:
   - action_id: "serve_model"
     action_type: "serve"
     model_name: "llama-7b-chat"
-    port: 8080
+    port: 9080
     devices: ["node1:gpu0"]
     dependencies: ["move_to_gpu"]
 
   - action_id: "health_check"
     action_type: "health_check"
-    target_url: "http://node1:8080/health"
+    target_url: "http://node1:9080/health"
     devices: []
     dependencies: ["serve_model"]
 ```
@@ -248,14 +260,14 @@ actions:
   - action_id: "serve_llama"
     action_type: "serve"
     model_name: "llama-7b"
-    port: 8080
+    port: 9080
     devices: ["node1:gpu0"]
     dependencies: ["load_llama_gpu"]
 
   - action_id: "serve_diffusion"
     action_type: "serve"
     model_name: "stable-diffusion-xl"
-    port: 8081
+    port: 9081
     devices: ["node2:gpu0"]
     dependencies: ["load_diffusion_gpu"]
 ```
@@ -268,53 +280,53 @@ The head node provides a comprehensive REST API:
 
 ```bash
 # List models
-curl http://localhost:8080/models
+curl http://localhost:9011/models
 
 # Get model details
-curl http://localhost:8080/models/llama-7b
+curl http://localhost:9011/models/llama-7b
 
 # Register model
-curl -X POST http://localhost:8080/models/llama-7b/register \
+curl -X POST http://localhost:9011/models/llama-7b/register \
   -H "Content-Type: application/json" \
   -d '{"model_type": "llm", "metadata": {"description": "Llama model"}}'
 
 # Get model locations
-curl http://localhost:8080/models/llama-7b/locations
+curl http://localhost:9011/models/llama-7b/locations
 
 # Get active services
-curl http://localhost:8080/models/llama-7b/services
+curl http://localhost:9011/models/llama-7b/services
 ```
 
 ### Job Management
 
 ```bash
 # Create job
-curl -X POST http://localhost:8080/jobs \
+curl -X POST http://localhost:9011/jobs \
   -H "Content-Type: application/json" \
   -d @job_definition.json
 
 # Upload YAML workflow
-curl -X POST http://localhost:8080/jobs/from-yaml \
+curl -X POST http://localhost:9011/jobs/from-yaml \
   -F "file=@workflow.yaml"
 
 # Get job status
-curl http://localhost:8080/jobs/JOB_ID/status
+curl http://localhost:9011/jobs/JOB_ID/status
 
 # List jobs
-curl http://localhost:8080/jobs
+curl http://localhost:9011/jobs
 ```
 
 ### System Status
 
 ```bash
 # System overview
-curl http://localhost:8080/status
+curl http://localhost:9011/status
 
 # Connected nodes
-curl http://localhost:8080/nodes
+curl http://localhost:9011/nodes
 
 # Health check
-curl http://localhost:8080/health
+curl http://localhost:9011/health
 ```
 
 ## Configuration
@@ -324,12 +336,12 @@ curl http://localhost:8080/health
 ```bash
 # Head node configuration
 export GSWARM_MODEL_HOST=0.0.0.0
-export GSWARM_MODEL_PORT=8090
-export GSWARM_MODEL_HTTP_PORT=8080
+export GSWARM_MODEL_PORT=9010
+export GSWARM_MODEL_HTTP_PORT=9011
 export GSWARM_MODEL_DATA_DIR=/data/gswarm_model
 
 # Client node configuration
-export GSWARM_MODEL_HEAD_ADDRESS=head_node:8090
+export GSWARM_MODEL_HEAD_ADDRESS=head_node:9010
 export GSWARM_MODEL_NODE_ID=worker-gpu-01
 ```
 
@@ -378,7 +390,7 @@ Each action supports various configuration options:
 - action_id: "custom_serve"
   action_type: "serve"
   model_name: "llama-7b"
-  port: 8080
+  port: 9080
   devices: ["node1:gpu0"]
   config:
     max_batch_size: 32
@@ -409,10 +421,10 @@ tail -f /var/log/gswarm_model/client.log
 2. **Port Already in Use**:
    ```bash
    # Check what's using the port
-   lsof -i :8090
+   lsof -i :9010
    
    # Use different port
-   gsmodel start --port 8091
+   gsmodel start --port 9011
    ```
 
 3. **Client Connection Failed**:

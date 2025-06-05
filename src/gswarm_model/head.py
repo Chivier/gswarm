@@ -80,26 +80,35 @@ class ModelManagerServicer(model_pb2_grpc.ModelManagerServicer):
                     available=device.available_capacity
                 )
             
+            # Convert GPU info from strings to dictionaries for NodeInfo model
+            gpu_info_dicts = []
+            for i, gpu_name in enumerate(request.gpu_info):
+                gpu_info_dicts.append({
+                    "physical_idx": i,
+                    "name": gpu_name,
+                    "id": f"gpu{i}"
+                })
+            
             # Create node info
             node_info = NodeInfo(
                 node_id=node_id,
                 hostname=request.hostname,
                 ip_address=request.ip_address,
                 storage_devices=storage_devices,
-                gpu_info=list(request.gpu_info),
+                gpu_info=gpu_info_dicts,  # Now using properly formatted dictionaries
                 last_seen=datetime.now(),
                 is_online=True
             )
             
             state.node_registry[node_id] = node_info
-            logger.info(f"Registered node {node_id} with {len(storage_devices)} storage devices")
+            logger.info(f"Registered node {node_id} with {len(storage_devices)} storage devices and {len(gpu_info_dicts)} GPUs")
         
         if state.enable_persistence:
             await save_registry()
         
         return model_pb2.ConnectResponse(
             success=True,
-            message=f"Node {node_id} connected successfully. Registered {len(storage_devices)} storage devices."
+            message=f"Node {node_id} connected successfully. Registered {len(storage_devices)} storage devices and {len(gpu_info_dicts)} GPUs."
         )
     
     async def Heartbeat(self, request: model_pb2.Empty, context):
