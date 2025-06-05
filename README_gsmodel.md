@@ -1,17 +1,23 @@
-# GSwarm Model Management System
+# GSwarm Model Management System (FastAPI Edition)
 
-A distributed model storage and management system for GPU clusters, designed to efficiently manage model distribution, storage, and serving across multiple nodes.
+A simplified distributed model storage and management system for GPU clusters, now using FastAPI instead of gRPC for better simplicity and easier debugging.
+
+## 🚀 What's New in v0.3.0
+
+- **No More gRPC**: Completely replaced gRPC with simple REST APIs using FastAPI
+- **Simplified Architecture**: Removed protobuf dependencies and complex RPC calls
+- **Better Debugging**: HTTP requests are much easier to debug than gRPC
+- **Fewer Dependencies**: No need for grpcio, grpcio-tools, or protobuf compilation
+- **Same Features**: All core functionality remains the same, just simpler
 
 ## Features
 
 ### 🚀 Core Capabilities
 - **Distributed Model Registry**: Central coordination of model locations and availability
 - **Multi-Storage Support**: Manage models across disk, RAM, and GPU memory
-- **Job Workflows**: YAML-based pipeline definitions for complex model operations
-- **REST API**: Complete HTTP API for integration and automation
-- **gRPC Communication**: High-performance inter-node communication
-- **Automatic Persistence**: State persistence and recovery
-- **Smart GPU Detection**: Automatic detection of gswarm-profiler for enhanced GPU information, with nvml fallback
+- **Job Workflows**: JSON/YAML-based pipeline definitions for complex model operations
+- **REST API**: Simple HTTP API for all operations
+- **Smart GPU Detection**: Automatic detection of available GPUs using nvitop/pynvml
 
 ### 📦 Model Operations
 - **Download**: Fetch models from web sources (HuggingFace, etc.)
@@ -20,39 +26,24 @@ A distributed model storage and management system for GPU clusters, designed to 
 - **Health Checks**: Monitor service availability
 - **Location Tracking**: Track model storage across the cluster
 
-### 🎯 Workflow Management
-- **YAML Pipelines**: Define complex multi-step operations
-- **Dependency Management**: Automatic dependency resolution
-- **Parallel Execution**: Concurrent action execution
-- **Progress Tracking**: Real-time job status monitoring
-
 ## Architecture
 
-The system follows a head-client architecture:
+The system follows a simple client-server architecture:
 
-- **Head Node**: Central coordinator managing model registry and orchestrating operations
-- **Client Nodes**: Worker nodes that store, serve, and execute models
+- **Head Node**: FastAPI server that manages the model registry and coordinates operations
+- **Client Nodes**: Worker nodes that connect via REST API to store and serve models
 - **Device Naming**: Standardized naming convention (`node:storage_type[:index]`)
 
 ### Device Types
-- `web`: External web sources (HuggingFace Hub)
 - `disk`: Persistent storage (SSD/HDD)
 - `dram`: System memory (RAM)
 - `gpu0`, `gpu1`: GPU memory
-
-### GPU Detection
-
-GSwarm Model automatically detects available GPUs using the following priority:
-
-1. **gswarm-profiler Integration**: If gswarm-profiler is running, gsmodel will use it to get comprehensive GPU information
-2. **NVML Fallback**: If gswarm-profiler is not available, falls back to nvitop/NVML for basic GPU detection
-3. **Dynamic Memory Detection**: Automatically detects actual GPU memory capacity instead of using hardcoded values
 
 ## Installation
 
 ### Prerequisites
 - Python 3.8+
-- gRPC tools for protocol buffer generation
+- FastAPI and related dependencies
 - NVIDIA drivers (for GPU support)
 
 ### Install Dependencies
@@ -62,14 +53,7 @@ GSwarm Model automatically detects available GPUs using the following priority:
 pip install -e .
 
 # Or install specific dependencies
-pip install grpcio grpcio-tools fastapi uvicorn pydantic pyyaml typer loguru aiofiles requests
-```
-
-### Generate gRPC Files
-
-```bash
-# Generate protocol buffer files
-gsmodel generate-grpc
+pip install fastapi uvicorn pydantic pyyaml typer loguru aiofiles requests
 ```
 
 ## Quick Start
@@ -77,47 +61,41 @@ gsmodel generate-grpc
 ### 1. Start Head Node
 
 ```bash
-# Start the head node with both gRPC and HTTP APIs
-gsmodel start --host 0.0.0.0 --port 9010 --http-port 9011
+# Start the head node server
+gsmodel head --port 8100
 
-# Or run in background
-gsmodel start --background --port 9010 --http-port 9011
+# The head node provides a REST API at http://localhost:8100
 ```
-
-The head node provides:
-- **gRPC server**: `localhost:9010` (for client nodes)
-- **HTTP API**: `http://localhost:9011` (for management)
-
-**Note**: Default ports have been changed to 9010/9011 to avoid conflicts with gswarm-profiler (which uses 8090/8091).
 
 ### 2. Connect Client Nodes
 
 ```bash
 # Connect a client node to the head node
-gsmodel connect localhost:9010 --node-id worker1
+gsmodel client http://localhost:8100 --node-id worker1
 
 # On another machine
-gsmodel connect head_node_ip:9010 --node-id worker2
+gsmodel client http://head_node_ip:8100 --node-id worker2
 ```
 
 ### 3. Register a Model
 
 ```bash
 # Register a model in the system
-gsmodel register llama-7b \
-  --type llm \
-  --url https://huggingface.co/meta-llama/Llama-2-7b-hf \
-  --desc "Llama 2 7B language model"
+gsmodel register llama-7b llm \
+  --source-url https://huggingface.co/meta-llama/Llama-2-7b-hf
 ```
 
-### 4. Run a Workflow
+### 4. Manage Models
 
 ```bash
-# Generate example workflows
-gsmodel example --output examples/
+# List all models
+gsmodel list
 
-# Execute a workflow
-gsmodel job examples/simple-deployment.yaml --wait
+# Download a model
+gsmodel download llama-7b https://huggingface.co/meta-llama/Llama-2-7b-hf node1:disk
+
+# Serve a model
+gsmodel serve llama-7b node1:gpu0 8080
 ```
 
 ## Command Line Interface
@@ -126,311 +104,229 @@ gsmodel job examples/simple-deployment.yaml --wait
 
 ```bash
 # Start head node
-gsmodel start [--host HOST] [--port PORT] [--http-port HTTP_PORT] [--background]
+gsmodel head [--host HOST] [--port PORT]
 
-# Start with custom data directory
-gsmodel start --data-dir /path/to/data
+# Default: http://0.0.0.0:8100
+gsmodel head
 ```
 
 ### Client Node Management
 
 ```bash
 # Connect client node
-gsmodel connect HEAD_ADDRESS [--node-id NODE_ID]
+gsmodel client HEAD_URL [--node-id NODE_ID]
 
 # Example
-gsmodel connect 192.168.1.100:9010 --node-id gpu-worker-01
+gsmodel client http://192.168.1.100:8100 --node-id gpu-worker-01
 ```
 
 ### Model Management
 
 ```bash
 # Register model
-gsmodel register MODEL_NAME [--type TYPE] [--url URL] [--desc DESCRIPTION]
+gsmodel register MODEL_NAME MODEL_TYPE [--source-url URL] [--metadata-file FILE]
 
 # List all models
-gsmodel list [--verbose]
+gsmodel list [--head-url URL]
 
-# Get model details
-gsmodel info MODEL_NAME
+# Download model
+gsmodel download MODEL_NAME SOURCE_URL DEVICE [--head-url URL]
 
-# Unregister model
-gsmodel unregister MODEL_NAME [--force]
+# Serve model
+gsmodel serve MODEL_NAME DEVICE PORT [--head-url URL]
 ```
 
 ### Job Management
 
 ```bash
-# Create job from YAML
-gsmodel job workflow.yaml [--wait]
+# Create job from file
+gsmodel job JOB_FILE [--head-url URL]
 
-# List all jobs
-gsmodel jobs [--status STATUS]
-
-# Get job status
-gsmodel job-status JOB_ID [--verbose]
-
-# Generate example workflows
-gsmodel example [--output DIR]
+# Job file can be JSON or YAML
+gsmodel job workflow.yaml
 ```
 
-### System Monitoring
+## REST API Reference
 
-```bash
-# System status
-gsmodel status
-
-# List connected nodes
-gsmodel nodes [--verbose]
-```
-
-## Workflow Examples
-
-### Simple Model Deployment
-
-```yaml
-name: "llama-deployment-pipeline"
-description: "Download and serve Llama model"
-
-actions:
-  - action_id: "download_llama"
-    action_type: "download"
-    model_name: "llama-7b-chat"
-    source_url: "https://huggingface.co/meta-llama/Llama-2-7b-chat-hf"
-    devices: ["node1:disk"]
-    dependencies: []
-
-  - action_id: "move_to_gpu"
-    action_type: "move"
-    model_name: "llama-7b-chat"
-    devices: ["node1:disk", "node1:gpu0"]  # from, to
-    keep_source: true
-    dependencies: ["download_llama"]
-
-  - action_id: "serve_model"
-    action_type: "serve"
-    model_name: "llama-7b-chat"
-    port: 9080
-    devices: ["node1:gpu0"]
-    dependencies: ["move_to_gpu"]
-
-  - action_id: "health_check"
-    action_type: "health_check"
-    target_url: "http://node1:9080/health"
-    devices: []
-    dependencies: ["serve_model"]
-```
-
-### Multi-Model Deployment
-
-```yaml
-name: "multi-model-inference"
-description: "Deploy multiple models for inference"
-
-actions:
-  # Download models in parallel
-  - action_id: "download_llama"
-    action_type: "download"
-    model_name: "llama-7b"
-    source_url: "https://huggingface.co/meta-llama/Llama-2-7b-hf"
-    devices: ["node1:disk"]
-    dependencies: []
-
-  - action_id: "download_diffusion"
-    action_type: "download"
-    model_name: "stable-diffusion-xl"
-    source_url: "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0"
-    devices: ["node2:disk"]
-    dependencies: []
-
-  # Load to different GPUs
-  - action_id: "load_llama_gpu"
-    action_type: "move"
-    model_name: "llama-7b"
-    devices: ["node1:disk", "node1:gpu0"]
-    dependencies: ["download_llama"]
-
-  - action_id: "load_diffusion_gpu"
-    action_type: "move"
-    model_name: "stable-diffusion-xl"
-    devices: ["node2:disk", "node2:gpu0"]
-    dependencies: ["download_diffusion"]
-
-  # Serve both models
-  - action_id: "serve_llama"
-    action_type: "serve"
-    model_name: "llama-7b"
-    port: 9080
-    devices: ["node1:gpu0"]
-    dependencies: ["load_llama_gpu"]
-
-  - action_id: "serve_diffusion"
-    action_type: "serve"
-    model_name: "stable-diffusion-xl"
-    port: 9081
-    devices: ["node2:gpu0"]
-    dependencies: ["load_diffusion_gpu"]
-```
-
-## HTTP API
-
-The head node provides a comprehensive REST API:
+The head node provides a simple REST API:
 
 ### Model Management
 
 ```bash
 # List models
-curl http://localhost:9011/models
+GET /models
 
 # Get model details
-curl http://localhost:9011/models/llama-7b
+GET /models/{model_name}
 
 # Register model
-curl -X POST http://localhost:9011/models/llama-7b/register \
-  -H "Content-Type: application/json" \
-  -d '{"model_type": "llm", "metadata": {"description": "Llama model"}}'
+POST /models
+{
+    "name": "llama-7b",
+    "type": "llm",
+    "source_url": "https://...",
+    "metadata": {}
+}
 
-# Get model locations
-curl http://localhost:9011/models/llama-7b/locations
+# Delete model
+DELETE /models/{model_name}
+```
 
-# Get active services
-curl http://localhost:9011/models/llama-7b/services
+### Model Operations
+
+```bash
+# Download model
+POST /download
+{
+    "model_name": "llama-7b",
+    "source_url": "https://...",
+    "target_device": "node1:disk"
+}
+
+# Move model
+POST /move
+{
+    "model_name": "llama-7b",
+    "source_device": "node1:disk",
+    "target_device": "node1:gpu0",
+    "keep_source": false
+}
+
+# Serve model
+POST /serve
+{
+    "model_name": "llama-7b",
+    "device": "node1:gpu0",
+    "port": 8080,
+    "config": {}
+}
+
+# Stop serving
+POST /stop/{model_name}/{device}
+```
+
+### Node Management
+
+```bash
+# Register node
+POST /nodes
+{
+    "node_id": "worker1",
+    "hostname": "gpu-server-01",
+    "ip_address": "192.168.1.101",
+    "storage_devices": {},
+    "gpu_count": 2
+}
+
+# List nodes
+GET /nodes
+
+# Node heartbeat
+POST /nodes/{node_id}/heartbeat
 ```
 
 ### Job Management
 
 ```bash
 # Create job
-curl -X POST http://localhost:9011/jobs \
-  -H "Content-Type: application/json" \
-  -d @job_definition.json
-
-# Upload YAML workflow
-curl -X POST http://localhost:9011/jobs/from-yaml \
-  -F "file=@workflow.yaml"
+POST /jobs
+{
+    "name": "deployment",
+    "description": "Deploy model",
+    "actions": [...]
+}
 
 # Get job status
-curl http://localhost:9011/jobs/JOB_ID/status
-
-# List jobs
-curl http://localhost:9011/jobs
+GET /jobs/{job_id}
 ```
 
 ### System Status
 
 ```bash
-# System overview
-curl http://localhost:9011/status
-
-# Connected nodes
-curl http://localhost:9011/nodes
-
 # Health check
-curl http://localhost:9011/health
+GET /health
+
+# Root endpoint
+GET /
 ```
 
-## Configuration
+## Job Definition Examples
 
-### Environment Variables
+### Simple Deployment (JSON)
 
-```bash
-# Head node configuration
-export GSWARM_MODEL_HOST=0.0.0.0
-export GSWARM_MODEL_PORT=9010
-export GSWARM_MODEL_HTTP_PORT=9011
-export GSWARM_MODEL_DATA_DIR=/data/gswarm_model
-
-# Client node configuration
-export GSWARM_MODEL_HEAD_ADDRESS=head_node:9010
-export GSWARM_MODEL_NODE_ID=worker-gpu-01
+```json
+{
+    "name": "deploy-llama",
+    "description": "Deploy Llama model",
+    "actions": [
+        {
+            "action": "download",
+            "model": "llama-7b",
+            "source": "https://huggingface.co/meta-llama/Llama-2-7b-hf",
+            "target": "node1:disk"
+        },
+        {
+            "action": "move",
+            "model": "llama-7b",
+            "from": "node1:disk",
+            "to": "node1:gpu0"
+        },
+        {
+            "action": "serve",
+            "model": "llama-7b",
+            "device": "node1:gpu0",
+            "port": 8080
+        }
+    ]
+}
 ```
 
-### Data Directory Structure
-
-```
-.gswarm_model_data/
-├── registry.json          # Persistent model and node registry
-├── jobs/                  # Job execution logs
-│   ├── job_123.json
-│   └── job_456.json
-└── logs/                  # System logs
-    ├── head.log
-    └── client.log
-```
-
-## Device Naming Convention
-
-The system uses a standardized device naming format:
-
-- **Format**: `<node_identifier>:<storage_type>[:<index>]`
-- **Examples**:
-  - `web` - External web source
-  - `node1:disk` - Disk storage on node1
-  - `node1:dram` - RAM on node1
-  - `node1:gpu0` - GPU 0 on node1
-  - `192.168.1.100:gpu1` - GPU 1 on specific IP
-
-## Action Types
-
-### Supported Actions
-
-- **download**: Download model from web source
-- **move**: Move model between devices (removes from source)
-- **copy**: Copy model between devices (keeps source)
-- **serve**: Start model inference service
-- **stop_serve**: Stop model service
-- **delete**: Remove model from storage
-- **health_check**: Check service health
-
-### Action Configuration
-
-Each action supports various configuration options:
+### Multi-Model Deployment (YAML)
 
 ```yaml
-- action_id: "custom_serve"
-  action_type: "serve"
-  model_name: "llama-7b"
-  port: 9080
-  devices: ["node1:gpu0"]
-  config:
-    max_batch_size: 32
-    timeout: 30
-    framework: "vllm"
-  dependencies: ["load_model"]
+name: multi-model-deployment
+description: Deploy multiple models
+
+actions:
+  - action: download
+    model: llama-7b
+    source: https://huggingface.co/meta-llama/Llama-2-7b-hf
+    target: node1:disk
+    
+  - action: download
+    model: stable-diffusion
+    source: https://huggingface.co/stabilityai/stable-diffusion-2-1
+    target: node2:disk
+    
+  - action: serve
+    model: llama-7b
+    device: node1:gpu0
+    port: 8080
+    
+  - action: serve
+    model: stable-diffusion
+    device: node2:gpu0
+    port: 8081
 ```
 
-## Monitoring and Troubleshooting
+## Migration from gRPC Version
 
-### Logs
+If you're migrating from the gRPC version:
 
-```bash
-# View head node logs
-tail -f .gswarm_model_data/logs/head.log
+1. **Remove gRPC files**: Delete `*.proto`, `*_pb2.py`, `*_pb2_grpc.py` files
+2. **Update imports**: Change from gRPC clients to the new REST client
+3. **Update CLI calls**: The CLI commands are similar but simplified
+4. **Update API calls**: Replace gRPC calls with REST API calls
 
-# View client logs
-tail -f /var/log/gswarm_model/client.log
-```
+### Key Differences
 
-### Common Issues
-
-1. **gRPC Files Missing**:
-   ```bash
-   gsmodel generate-grpc
-   ```
-
-2. **Port Already in Use**:
-   ```bash
-   # Check what's using the port
-   lsof -i :9010
-   
-   # Use different port
-   gsmodel start --port 9011
-   ```
-
-3. **Client Connection Failed**:
-   - Check head node is running
-   - Verify network connectivity
-   - Check firewall settings
+| Feature | gRPC Version | FastAPI Version |
+|---------|--------------|-----------------|
+| Protocol | gRPC/Protobuf | REST/JSON |
+| Dependencies | grpcio, protobuf | fastapi, requests |
+| Debugging | Complex | Simple (HTTP) |
+| Setup | Requires protobuf compilation | No compilation needed |
+| Performance | Slightly faster | Fast enough |
 
 ## Development
 

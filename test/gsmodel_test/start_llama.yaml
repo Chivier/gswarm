@@ -1,0 +1,31 @@
+# Model execution workflow
+name: "llama-deployment-pipeline"
+description: "Download and serve Llama model"
+
+actions:
+  - action_id: "download_llama"
+    action_type: "download"
+    model_name: "llama-7b-chat"
+    source_url: "https://huggingface.co/meta-llama/Llama-2-7b-chat-hf"
+    devices: ["node1:disk"]
+    dependencies: []
+
+  - action_id: "move_to_gpu"
+    action_type: "move"
+    model_name: "llama-7b-chat"
+    devices: ["node1:disk", "node1:gpu0"]  # src, dst
+    keep_source: true
+    dependencies: ["download_llama"]
+
+  - action_id: "serve_model"
+    action_type: "serve"
+    model_name: "llama-7b-chat"
+    port: 8080
+    devices: ["node1:gpu4"]
+    dependencies: ["move_to_gpu"]
+
+  - action_id: "health_check"
+    action_type: "health_check"
+    target_url: "http://node1:8080/health"
+    devices: []  # no devices needed for health check
+    dependencies: ["serve_model"]

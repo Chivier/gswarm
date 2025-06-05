@@ -470,26 +470,6 @@ Logs are stored in `~/.gswarm/logs/`:
    - Look for resource conflicts
    - Cancel stuck tasks with `gswarm queue cancel`
 
-## Migration from Legacy Components
-
-If you're migrating from separate `gswarm-profiler` and `gswarm-model`:
-
-1. **Backup existing data**:
-   ```bash
-   cp -r ~/.gswarm_profiler_data ~/.gswarm_profiler_data.backup
-   cp -r ~/.gswarm_model_data ~/.gswarm_model_data.backup
-   ```
-
-2. **Update CLI commands**:
-   - `gsprof` → `gswarm profiler`
-   - `gsmodel` → `gswarm model`
-
-3. **Update API endpoints**:
-   - Model APIs now use `/api/v1/` prefix
-   - Same ports are maintained for compatibility
-
-See the [Migration Guide](docs/Migration-Guide.md) for detailed instructions.
-
 ## Development
 
 ### Running Tests
@@ -512,14 +492,6 @@ pytest tests/test_queue.py
 4. Add tests
 5. Submit a pull request
 
-## Documentation
-
-- [Architecture Overview](docs/Architecture.md)
-- [API Reference](docs/API-Reference.md)
-- [Migration Guide](docs/Migration-Guide.md)
-- [Model Storage Design](docs/Model-Storage-design.md)
-- [Profiler Protocol Design](docs/grpc-protocol-design.md)
-
 ## License
 
 MIT License - see LICENSE file for details
@@ -539,4 +511,4 @@ MIT License - see LICENSE file for details
 - [ ] Integration with popular ML frameworks
 - [ ] Multi-cloud support
 
-For more information, see the [documentation](docs/).
+For more information, see the [documentation](docs/). 

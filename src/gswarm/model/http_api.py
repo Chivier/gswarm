@@ -407,10 +407,18 @@ async def create_job_from_yaml(file: UploadFile = File(...)):
         # Convert YAML to job format
         actions = []
         for action_data in job_def.get("actions", []):
+            # Handle optional model_name for certain action types
+            action_type = ActionType(action_data["action_type"])
+            model_name = action_data.get("model_name")
+            
+            # For health_check actions, model_name is optional - use placeholder if not provided
+            if action_type == ActionType.HEALTH_CHECK and model_name is None:
+                model_name = "health_check_placeholder"
+            
             action = JobAction(
                 action_id=action_data["action_id"],
-                action_type=ActionType(action_data["action_type"]),
-                model_name=action_data["model_name"],
+                action_type=action_type,
+                model_name=model_name,
                 devices=action_data.get("devices", []),
                 dependencies=action_data.get("dependencies", []),
                 source_url=action_data.get("source_url"),
