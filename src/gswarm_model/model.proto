@@ -1,0 +1,164 @@
+syntax = "proto3";
+
+package model_manager;
+
+// Empty message for requests that don't need parameters
+message Empty {}
+
+// Model information for initial registration
+message ModelInfo {
+    string model_name = 1;
+    string model_type = 2;
+    int64 model_size = 3;
+    string model_hash = 4;
+    repeated string stored_locations = 5;
+    map<string, string> available_services = 6;
+}
+
+// Storage device information
+message StorageDevice {
+    string device_name = 1;
+    string storage_type = 2;
+    int64 total_capacity = 3;
+    int64 used_capacity = 4;
+    int64 available_capacity = 5;
+}
+
+// Node information for registration
+message NodeRegistration {
+    string node_id = 1;
+    string hostname = 2;
+    string ip_address = 3;
+    repeated StorageDevice storage_devices = 4;
+    repeated string gpu_info = 5;
+}
+
+// Response for node connection
+message ConnectResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+// Model operation request
+message ModelOperationRequest {
+    string operation_type = 1;  // "download", "move", "serve", "delete"
+    string model_name = 2;
+    string source_device = 3;
+    string target_device = 4;
+    string source_url = 5;
+    int32 port = 6;
+    map<string, string> config = 7;
+    bool keep_source = 8;
+}
+
+// Model operation response
+message ModelOperationResponse {
+    bool success = 1;
+    string message = 2;
+    string operation_id = 3;
+}
+
+// Model status update
+message ModelStatusUpdate {
+    string node_id = 1;
+    string model_name = 2;
+    string status = 3;  // "available", "downloading", "moving", "serving", "error"
+    string device = 4;
+    int32 service_port = 5;
+    string error_message = 6;
+    int64 progress_bytes = 7;
+    int64 total_bytes = 8;
+}
+
+// Job action definition
+message JobAction {
+    string action_id = 1;
+    string action_type = 2;
+    string model_name = 3;
+    repeated string devices = 4;
+    repeated string dependencies = 5;
+    string source_url = 6;
+    int32 port = 7;
+    string target_url = 8;
+    bool keep_source = 9;
+    map<string, string> config = 10;
+}
+
+// Job definition
+message JobDefinition {
+    string job_id = 1;
+    string name = 2;
+    string description = 3;
+    repeated JobAction actions = 4;
+}
+
+// Job status
+message JobStatusResponse {
+    string job_id = 1;
+    string status = 2;  // "pending", "running", "completed", "failed", "cancelled"
+    string error_message = 3;
+    int32 completed_actions = 4;
+    int32 total_actions = 5;
+}
+
+// System status
+message SystemStatus {
+    int32 total_nodes = 1;
+    int32 online_nodes = 2;
+    int32 total_models = 3;
+    int32 active_services = 4;
+    map<string, double> storage_utilization = 5;
+}
+
+// List models response
+message ModelList {
+    repeated ModelInfo models = 1;
+    int32 total_count = 2;
+}
+
+// Health check request
+message HealthCheckRequest {
+    string target_url = 1;
+    int32 timeout_seconds = 2;
+}
+
+// Health check response
+message HealthCheckResponse {
+    bool is_healthy = 1;
+    string status_message = 2;
+    int32 response_time_ms = 3;
+}
+
+// Service definition
+service ModelManager {
+    // Node management
+    rpc Connect(NodeRegistration) returns (ConnectResponse);
+    rpc Heartbeat(Empty) returns (Empty);
+    rpc Disconnect(Empty) returns (Empty);
+    
+    // Model registry management
+    rpc RegisterModel(ModelInfo) returns (ModelOperationResponse);
+    rpc ListModels(Empty) returns (ModelList);
+    rpc GetModelInfo(ModelInfo) returns (ModelInfo);
+    rpc UnregisterModel(ModelInfo) returns (ModelOperationResponse);
+    
+    // Model operations
+    rpc DownloadModel(ModelOperationRequest) returns (ModelOperationResponse);
+    rpc MoveModel(ModelOperationRequest) returns (ModelOperationResponse);
+    rpc ServeModel(ModelOperationRequest) returns (ModelOperationResponse);
+    rpc StopServing(ModelOperationRequest) returns (ModelOperationResponse);
+    rpc DeleteModel(ModelOperationRequest) returns (ModelOperationResponse);
+    
+    // Status updates
+    rpc UpdateModelStatus(ModelStatusUpdate) returns (Empty);
+    rpc StreamModelUpdates(stream ModelStatusUpdate) returns (Empty);
+    
+    // Job management
+    rpc CreateJob(JobDefinition) returns (ModelOperationResponse);
+    rpc GetJobStatus(JobDefinition) returns (JobStatusResponse);
+    rpc CancelJob(JobDefinition) returns (ModelOperationResponse);
+    
+    // System status
+    rpc GetSystemStatus(Empty) returns (SystemStatus);
+    rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+} 
