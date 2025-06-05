@@ -12,10 +12,10 @@ import os
 import nvitop
 
 # Import generated protobuf classes
-from . import profiler_pb2
-from . import profiler_pb2_grpc
+from gswarm.profiler. import profiler_pb2
+from gswarm.profiler. import profiler_pb2_grpc
 
-from .utils import draw_gpu_metrics
+from gswarm.profiler.utils import draw_gpu_metrics
 
 
 # --- Global State for Head Node ---

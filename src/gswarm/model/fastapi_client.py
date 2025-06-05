@@ -10,7 +10,7 @@ from typing import Dict, Optional, List, Any
 from datetime import datetime
 from loguru import logger
 
-from .fastapi_models import NodeInfo
+from gswarm.model.fastapi_models import NodeInfo
 
 
 class ModelClient:

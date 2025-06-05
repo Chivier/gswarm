@@ -4,7 +4,7 @@
 import grpc
 import warnings
 
-from . import profiler_pb2 as profiler__pb2
+from gswarm.profiler. import profiler_pb2 as profiler__pb2
 
 GRPC_GENERATED_VERSION = "1.71.0"
 GRPC_VERSION = grpc.__version__

@@ -12,9 +12,9 @@ from collections import deque
 from loguru import logger
 from datetime import datetime
 
-from . import profiler_pb2
-from . import profiler_pb2_grpc
-from .client import collect_gpu_metrics, dict_to_grpc_metrics_update
+from gswarm.profiler. import profiler_pb2
+from gswarm.profiler. import profiler_pb2_grpc
+from gswarm.profiler.client import collect_gpu_metrics, dict_to_grpc_metrics_update
 
 
 class ResilientClient:

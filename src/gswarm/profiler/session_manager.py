@@ -7,7 +7,7 @@ import uuid
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from loguru import logger
-from .persistence import PersistentStorage, FileBasedStorage
+from gswarm.profiler.persistence import PersistentStorage, FileBasedStorage
 
 
 class ProfilingSession:

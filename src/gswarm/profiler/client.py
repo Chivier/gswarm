@@ -15,8 +15,8 @@ from rich.panel import Panel
 
 # Import generated protobuf classes
 try:
-    from . import profiler_pb2
-    from . import profiler_pb2_grpc
+    from gswarm.profiler. import profiler_pb2
+    from gswarm.profiler. import profiler_pb2_grpc
 except ImportError:
     logger.error("gRPC protobuf files not found. Please run 'python generate_grpc.py' first.")
     raise

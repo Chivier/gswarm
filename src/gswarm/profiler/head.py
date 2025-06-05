@@ -12,18 +12,18 @@ import os
 import nvitop
 import time
 import sys
-from .session_manager import SessionManager, ProfilingSession
-from .persistence import FileBasedStorage
+from gswarm.profiler.session_manager import SessionManager, ProfilingSession
+from gswarm.profiler.persistence import FileBasedStorage
 
 # Import generated protobuf classes (these will be generated)
 try:
-    from . import profiler_pb2
-    from . import profiler_pb2_grpc
+    from gswarm.profiler. import profiler_pb2
+    from gswarm.profiler. import profiler_pb2_grpc
 except ImportError:
     logger.error("gRPC protobuf files not found. Please run 'python generate_grpc.py' first.")
     raise
 
-from .utils import draw_gpu_metrics
+from gswarm.profiler.utils import draw_gpu_metrics
 
 
 # --- Global State for Head Node ---
@@ -464,7 +464,7 @@ async def run_grpc_server(host: str, port: int):
 
 async def run_both_servers(grpc_host: str, grpc_port: int, http_host: str, http_port: int):
     """Run both gRPC and HTTP servers concurrently"""
-    from .http_api import run_http_server
+    from gswarm.profiler.http_api import run_http_server
 
     # Create tasks for both servers
     grpc_task = asyncio.create_task(run_grpc_server(grpc_host, grpc_port))

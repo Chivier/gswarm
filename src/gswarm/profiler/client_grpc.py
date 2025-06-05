@@ -10,8 +10,8 @@ from rich.live import Live
 from rich.table import Table
 
 # Import generated protobuf classes
-from . import profiler_pb2
-from . import profiler_pb2_grpc
+from gswarm.profiler. import profiler_pb2
+from gswarm.profiler. import profiler_pb2_grpc
 
 
 def display_gpu_info(payload: Dict[str, Any]):

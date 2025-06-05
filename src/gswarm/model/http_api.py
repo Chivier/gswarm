@@ -16,8 +16,8 @@ from datetime import datetime
 from loguru import logger
 
 # Import the head module's state and models
-from .head import state
-from .models import (
+from gswarm.model.head import state
+from gswarm.model.models import (
     RegisterModelRequest, DownloadModelRequest, MoveModelRequest, ServeModelRequest,
     CreateJobRequest, ModelSummary, ListModelsResponse, SystemStatusResponse,
     NodeStatusResponse, JobAction, ActionType, ModelType, Job
@@ -124,7 +124,7 @@ async def get_model_info(model_name: str):
 async def register_model(model_name: str, request: RegisterModelRequest):
     """Register a new model in the system"""
     try:
-        from .models import HostModelInfo, ModelMetadata
+        from gswarm.model.models import HostModelInfo, ModelMetadata
         
         async with state.registry_lock:
             if model_name in state.model_registry:
@@ -144,7 +144,7 @@ async def register_model(model_name: str, request: RegisterModelRequest):
             logger.info(f"Registered model {model_name} of type {request.model_type}")
         
         if state.enable_persistence:
-            from .head import save_registry
+            from gswarm.model.head import save_registry
             await save_registry()
         
         return StandardResponse(
@@ -169,7 +169,7 @@ async def unregister_model(model_name: str):
             logger.info(f"Unregistered model {model_name}")
         
         if state.enable_persistence:
-            from .head import save_registry
+            from gswarm.model.head import save_registry
             await save_registry()
         
         return StandardResponse(
@@ -222,7 +222,7 @@ async def add_model_location(model_name: str, device_name: str):
                 logger.info(f"Added location {device_name} for model {model_name}")
         
         if state.enable_persistence:
-            from .head import save_registry
+            from gswarm.model.head import save_registry
             await save_registry()
         
         return StandardResponse(
@@ -251,7 +251,7 @@ async def remove_model_location(model_name: str, device_name: str):
                 logger.info(f"Removed location {device_name} for model {model_name}")
         
         if state.enable_persistence:
-            from .head import save_registry
+            from gswarm.model.head import save_registry
             await save_registry()
         
         return StandardResponse(
@@ -316,7 +316,7 @@ async def request_model_serving(model_name: str, request: ServeModelRequest):
         async with state.job_lock:
             state.jobs[job_id] = job
             # Start job execution
-            from .head import execute_job
+            from gswarm.model.head import execute_job
             task = asyncio.create_task(execute_job(job))
             state.active_jobs[job_id] = task
         
@@ -347,7 +347,7 @@ async def stop_model_service(model_name: str, device_name: str):
                 logger.info(f"Stopped service for model {model_name} on {device_name}")
         
         if state.enable_persistence:
-            from .head import save_registry
+            from gswarm.model.head import save_registry
             await save_registry()
         
         return StandardResponse(
@@ -380,7 +380,7 @@ async def create_job(request: CreateJobRequest):
         async with state.job_lock:
             state.jobs[job_id] = job
             # Start job execution
-            from .head import execute_job
+            from gswarm.model.head import execute_job
             task = asyncio.create_task(execute_job(job))
             state.active_jobs[job_id] = task
         
@@ -440,7 +440,7 @@ async def create_job_from_yaml(file: UploadFile = File(...)):
         async with state.job_lock:
             state.jobs[job_id] = job
             # Start job execution
-            from .head import execute_job
+            from gswarm.model.head import execute_job
             task = asyncio.create_task(execute_job(job))
             state.active_jobs[job_id] = task
         
@@ -512,7 +512,7 @@ async def cancel_job(job_id: str):
                 del state.active_jobs[job_id]
             
             # Update job status
-            from .models import JobStatus
+            from gswarm.model.models import JobStatus
             job.status = JobStatus.CANCELLED
             job.completed_at = datetime.now()
         

@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 from loguru import logger
 
-from .fastapi_models import (
+from gswarm.model.fastapi_models import (
     ModelInfo, NodeInfo, RegisterModelRequest, DownloadRequest,
     MoveRequest, ServeRequest, JobRequest, StandardResponse
 )

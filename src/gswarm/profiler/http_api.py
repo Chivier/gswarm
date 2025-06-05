@@ -7,7 +7,7 @@ from loguru import logger
 from datetime import datetime
 
 # Import the head module's state
-from .head import state, HeadNodeState
+from gswarm.profiler.head import state, HeadNodeState
 
 app = FastAPI(
     title="GSwarm Profiler HTTP API", description="HTTP API for GSwarm Profiler control panel", version="0.1.0"
@@ -95,7 +95,7 @@ async def start_profiling(request: StartProfilingRequest):
             state.gpu_memory_count = {}
 
         # Import the collect function from head module
-        from .head import collect_and_store_frame
+        from gswarm.profiler.head import collect_and_store_frame
 
         state.profiling_task = asyncio.create_task(collect_and_store_frame())
         logger.info(f"Profiling started via HTTP API. Output will be saved to {state.output_filename}")

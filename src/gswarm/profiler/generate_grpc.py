@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script to generate gRPC Python files from .proto definition
+Script to generate gRPC Python files from gswarm.profiler.proto definition
 """
 
 import subprocess
@@ -17,7 +17,7 @@ def fix_imports_in_file(file_path: Path):
     # Fix the import in profiler_pb2_grpc.py that imports profiler_pb2
     content = re.sub(
         r"^import profiler_pb2 as profiler__pb2\b",
-        "from . import profiler_pb2 as profiler__pb2",
+        "from gswarm.profiler. import profiler_pb2 as profiler__pb2",
         content,
         flags=re.MULTILINE,
     )
