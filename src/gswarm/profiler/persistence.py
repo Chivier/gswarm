@@ -45,9 +45,15 @@ class PersistentStorage:
 class FileBasedStorage(PersistentStorage):
     """File-based persistent storage implementation"""
 
-    def __init__(self, base_dir: str = ".gswarm_profiler_data"):
-        self.base_dir = Path(base_dir)
-        self.base_dir.mkdir(exist_ok=True)
+    def __init__(self, base_dir: Optional[str] = None):
+        if base_dir is None:
+            # Use cache directory by default
+            from gswarm.utils.cache import get_cache_dir
+            self.base_dir = get_cache_dir() / "profiler"
+        else:
+            self.base_dir = Path(base_dir)
+        
+        self.base_dir.mkdir(parents=True, exist_ok=True)
         self._locks: Dict[str, asyncio.Lock] = {}
 
     def _get_lock(self, session_id: str) -> asyncio.Lock:

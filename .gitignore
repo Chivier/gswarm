@@ -176,3 +176,5 @@ cython_debug/
 
 llama-test.json
 llama-test.pdf
+
+*.pkl

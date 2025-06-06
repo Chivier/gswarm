@@ -369,9 +369,15 @@ class ResilientClient:
             logger.info(f"Saving {len(self.buffer)} buffered metrics to disk")
             try:
                 import pickle
-
-                with open(f"buffered_metrics_{self.hostname}_{int(time.time())}.pkl", "wb") as f:
+                from gswarm.utils.cache import get_cache_dir
+                
+                cache_dir = get_cache_dir() / "metrics"
+                cache_dir.mkdir(exist_ok=True)
+                
+                metrics_file = cache_dir / f"buffered_metrics_{self.hostname}_{int(time.time())}.pkl"
+                with open(metrics_file, "wb") as f:
                     pickle.dump(list(self.buffer), f)
+                logger.info(f"Saved buffered metrics to {metrics_file}")
             except Exception as e:
                 logger.error(f"Failed to save buffered metrics: {e}")
         
@@ -380,9 +386,15 @@ class ResilientClient:
             logger.info(f"Saving {len(self.metrics_history)} historical metrics to disk")
             try:
                 import pickle
+                from gswarm.utils.cache import get_cache_dir
                 
-                with open(f"metrics_history_{self.hostname}_{int(time.time())}.pkl", "wb") as f:
+                cache_dir = get_cache_dir() / "metrics"
+                cache_dir.mkdir(exist_ok=True)
+                
+                history_file = cache_dir / f"metrics_history_{self.hostname}_{int(time.time())}.pkl"
+                with open(history_file, "wb") as f:
                     pickle.dump(list(self.metrics_history), f)
+                logger.info(f"Saved historical metrics to {history_file}")
             except Exception as e:
                 logger.error(f"Failed to save historical metrics: {e}")
 

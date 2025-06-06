@@ -99,17 +99,31 @@ gswarm profiler stop --name training_run
 # List available models
 gswarm model list
 
-# Download a model
-gswarm model download llama-7b --source huggingface
+# Download a model (on host node)
+gswarm model download llama-7b --source huggingface --url https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct --node node1 --type llm
+# or use hf:// format
+gswarm model download llama-7b --source hf://meta-llama/Llama-3.1-8B-Instruct --node node1 --type llm
 
-# Deploy model to GPU
-gswarm model move llama-7b --from disk --to gpu0
+# Download a model (on client node, if node-id is not specified, it will download local)
+gswarm model download llama-7b --source huggingface --url https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct --type llm
+# or use hf:// format
+gswarm model download llama-7b --source hf://meta-llama/Llama-3.1-8B-Instruct --type llm
 
-# Start model serving
+# Deploy model to GPU (on client node)
+gswarm model move llama-7b --from disk --to gpu0 
+# if i am on host, i must specify the node id
+gswarm model move llama-7b --from disk --to gpu0 --node node1
+
+# Start model serving (on client node)
+# each model requires different method to implement serving, this is provideed in model/instance/xxx.py
+# xxx is the model type, we use type to support different model inference methods
 gswarm model serve llama-7b --device gpu0 --port 8080
+# if i am on host, i must specify the node id
+gswarm model serve llama-7b --device gpu0 --port 8080 --node node1
 
 # Check model status
 gswarm model status llama-7b
+gswarm model status llama-7b --node node1
 ```
 
 ### 5. Manage Data

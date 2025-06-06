@@ -64,6 +64,17 @@ def version():
     from . import __version__
     typer.echo(f"gswarm version: {__version__}")
 
+@app.command(name="clean-history")
+def clean_history():
+    """Clean the gswarm cache directory"""
+    from .utils.cache import clean_history
+    
+    if clean_history():
+        typer.echo("✓ Cache directory cleaned successfully")
+    else:
+        typer.echo("✗ Failed to clean cache directory", err=True)
+        raise typer.Exit(1)
+
 def main():
     """Main entry point"""
     app()

@@ -1,5 +1,5 @@
 """
-Simplified FastAPI head node for gswarm_model system.
+Simplified FastAPI head node for gswarm model system.
 """
 
 from fastapi import FastAPI, HTTPException

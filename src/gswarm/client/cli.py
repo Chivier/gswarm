@@ -36,11 +36,16 @@ def connect(
     from ..profiler.client_resilient import start_resilient_client
     from ..model.fastapi_client import ModelClient
     
-    # Start model client registration
-    model_host_port = port + 920  # Default offset from profiler to model port
-    model_client = ModelClient(f"http://{host}:{model_host_port}", node_id=node_id)
-    if not model_client.register_node():
-        logger.warning("Failed to register with model service")
+    # Try to register with model service (optional)
+    try:
+        model_host_port = port + 920  # Default offset from profiler to model port
+        model_client = ModelClient(f"http://{host}:{model_host_port}", node_id=node_id)
+        if model_client.register_node():
+            logger.info("Successfully registered with model service")
+        else:
+            logger.debug("Model service registration failed, continuing without it")
+    except Exception as e:
+        logger.debug(f"Model service not available (this is optional): {e}")
     
     # Start profiler client
     if resilient:

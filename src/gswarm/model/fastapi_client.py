@@ -27,14 +27,14 @@ class ModelClient:
             node_info = self._get_node_info()
             response = self.session.post(
                 f"{self.head_url}/nodes",
-                json=node_info.model_dump()
+                json=node_info.model_dump(mode='json')
             )
             response.raise_for_status()
             result = response.json()
             logger.info(f"Node registered: {result['message']}")
             return result['success']
         except Exception as e:
-            logger.error(f"Failed to register node: {e}")
+            logger.debug(f"Failed to register node: {e}")
             return False
     
     def _get_node_info(self) -> NodeInfo:
