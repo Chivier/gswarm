@@ -31,24 +31,26 @@ def start(
     
     async def run_all_services():
         # Start profiler in background
-        profiler_task = asyncio.create_task(
-            asyncio.to_thread(
-                run_profiler_head, 
-                host, port, enable_bandwidth, enable_nvlink, http_port
-            )
-        )
-        
         # Start model service
         import uvicorn
         model_app = create_model_app()
+
+        async with asyncio.TaskGroup() as tg:
+            profiler_task = tg.create_task(
+                asyncio.to_thread(
+                    run_profiler_head, 
+                    host, port, enable_bandwidth, enable_nvlink, http_port
+                )
+            )
+            model_server_task = tg.create_task(
+                uvicorn.Server(
+                    uvicorn.Config(model_app, host=host, port=model_port)
+                ).serve()
+            )
         
-        # Run both services
-        await asyncio.gather(
-            profiler_task,
-            uvicorn.Server(
-                uvicorn.Config(model_app, host=host, port=model_port)
-            ).serve()
-        )
+        
+        
+        
     
     try:
         asyncio.run(run_all_services())

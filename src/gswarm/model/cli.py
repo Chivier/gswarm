@@ -8,6 +8,7 @@ from typing import Optional, List
 from pathlib import Path
 import requests
 import json
+import os
 from loguru import logger
 from rich.console import Console
 from rich.table import Table
@@ -24,12 +25,13 @@ app = typer.Typer(
 DEFAULT_HOST_URL = "http://localhost:8091"  # HTTP API port
 DEFAULT_MODEL_API_URL = "http://localhost:9010"  # Model API port
 
+MODEL_API_URL = os.getenv("MODEL_API_URL", DEFAULT_MODEL_API_URL)
 
 def get_api_url(node: Optional[str] = None) -> str:
     """Get the appropriate API URL based on whether we're on host or client"""
     # In a real implementation, this would check if we're on host or client
     # and potentially use the node parameter to route to specific nodes
-    return DEFAULT_MODEL_API_URL
+    return MODEL_API_URL
 
 
 @app.command()
