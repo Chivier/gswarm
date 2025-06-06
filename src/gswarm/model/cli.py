@@ -27,6 +27,16 @@ DEFAULT_MODEL_API_URL = "http://localhost:9010"  # Model API port
 
 MODEL_API_URL = os.getenv("MODEL_API_URL", DEFAULT_MODEL_API_URL)
 
+
+def handle_api_error(feature: str, response: requests.exceptions.RequestException):
+    """Handle API errors and log them"""
+    if response.response is not None:
+        error_message = response.response.json().get("detail", "Unknown error")
+        logger.error(f"{feature} failed: {error_message}")
+    else:
+        logger.error(f"{feature} API request failed: {response}")
+    raise typer.Exit(1)
+
 def get_api_url(node: Optional[str] = None) -> str:
     """Get the appropriate API URL based on whether we're on host or client"""
     # In a real implementation, this would check if we're on host or client
@@ -74,7 +84,7 @@ def list(
         console.print(table)
         
     except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to list models: {e}")
+        handle_api_error("List Models", e)
         raise typer.Exit(1)
 
 
@@ -105,7 +115,7 @@ def info(
             console.print(json.dumps(model["metadata"], indent=2))
             
     except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to get model info: {e}")
+        handle_api_error("Get detailed information about a model", e)
         raise typer.Exit(1)
 
 
@@ -137,7 +147,7 @@ def register(
             raise typer.Exit(1)
             
     except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to register model: {e}")
+        handle_api_error("Register a new model in the system", e)
         raise typer.Exit(1)
 
 
@@ -202,7 +212,7 @@ def download(
             raise typer.Exit(1)
             
     except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to download model: {e}")
+        handle_api_error("Download model", e)
         raise typer.Exit(1)
 
 
@@ -242,7 +252,7 @@ def move(
             raise typer.Exit(1)
             
     except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to move model: {e}")
+        handle_api_error("Move model", e)
         raise typer.Exit(1)
 
 
@@ -283,7 +293,7 @@ def delete(
         console.print(f"[green]✓[/green] Model deleted from {device}")
         
     except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to delete model: {e}")
+        handle_api_error("Delete model", e)
         raise typer.Exit(1)
 
 
@@ -320,7 +330,7 @@ def serve(
             raise typer.Exit(1)
             
     except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to serve model: {e}")
+        handle_api_error("Serve model", e)
         raise typer.Exit(1)
 
 
@@ -357,7 +367,7 @@ def stop(
             raise typer.Exit(1)
             
     except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to stop model: {e}")
+        handle_api_error("Stop model service", e)
         raise typer.Exit(1)
 
 
@@ -390,7 +400,7 @@ def services():
             console.print("No running services found", style="yellow")
             
     except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to list services: {e}")
+        handle_api_error("List running model services", e)
         raise typer.Exit(1)
 
 
@@ -436,7 +446,7 @@ def service_health(
                 console.print(f"  [red]✗[/red] {device}: {url} - Unreachable")
                 
     except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to check service health: {e}")
+        handle_api_error("Check model service health", e)
         raise typer.Exit(1)
 
 
