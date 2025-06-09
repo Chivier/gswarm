@@ -46,6 +46,14 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0.0",
 ]
+vllm = [
+    "vllm>=0.3.0",
+    "transformers>=4.38.0",
+    "accelerate>=0.27.0",
+    "bitsandbytes>=0.42.0",
+    "flash-attn>=2.5.0",
+    "xformers>=0.0.23",
+]
 
 [tool.hatch.build.targets.wheel]
 sources = ["src"]
