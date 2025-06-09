@@ -134,7 +134,7 @@ def list(
         table.add_column("Name", style="cyan")
         table.add_column("Type", style="green")
         table.add_column("Status", style="yellow")  # ✅ Add status column
-        table.add_column("Locations", style="blue")
+        table.add_column("Locations", style="blue", no_wrap=True)
         table.add_column("Services", style="magenta")
         
         for model in models:
@@ -212,7 +212,11 @@ def info(
                     
             elif status == "ready":
                 console.print(f"[green]✅ Ready[/green]")
-                console.print(f"Locations: {', '.join(model.get('locations', []))}")
+                locations = model.get('locations', [])
+                if locations:
+                    console.print("[bold]Locations:[/bold]")
+                    for loc in locations:
+                        console.print(f"  - [blue]{loc}[/blue]")
                 
             elif status == "error":
                 progress = model.get('download_progress', {})
@@ -600,7 +604,11 @@ def services():
         for model in models:
             for device, url in model.get("services", {}).items():
                 has_services = True
-                table.add_row(model["name"], device, url)
+                table.add_row(
+                    f"[cyan]{model['name']}[/cyan]",
+                    f"[green]{device}[/green]", 
+                    f"[yellow]{url}[/yellow]"
+                )
         
         if has_services:
             console.print(table)
