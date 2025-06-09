@@ -40,8 +40,11 @@ def connect(
     try:
         model_host_port = port + 920  # Default offset from profiler to model port
         model_client = ModelClient(f"http://{host}:{model_host_port}", node_id=node_id)
+        
+        # Initialize with empty model dictionary, then discover and register
         if model_client.register_node():
             logger.info("Successfully registered with model service")
+            logger.info("Model discovery and registration completed")
         else:
             logger.debug("Model service registration failed, continuing without it")
     except Exception as e:

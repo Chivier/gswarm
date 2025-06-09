@@ -32,6 +32,11 @@ class ModelClient:
             response.raise_for_status()
             result = response.json()
             logger.info(f"Node registered: {result['message']}")
+            
+            # Scan for local HuggingFace models after successful registration
+            if result['success']:
+                self._discover_and_register_local_models()
+            
             return result['success']
         except Exception as e:
             logger.debug(f"Failed to register node: {e}")
@@ -212,4 +217,42 @@ class ModelClient:
             return response.json()
         except Exception as e:
             logger.error(f"Failed to get job status: {e}")
-            return None 
+            return None
+    
+    def _discover_and_register_local_models(self) -> None:
+        """Discover and register locally cached HuggingFace models"""
+        try:
+            from gswarm.utils.cache import scan_huggingface_models
+            discovered_models = scan_huggingface_models()
+            
+            if not discovered_models:
+                logger.info("No cached HuggingFace models found")
+                return
+            
+            logger.info(f"Found {len(discovered_models)} cached models, registering...")
+            
+            for model_info in discovered_models:
+                try:
+                    # Register each discovered model
+                    success = self.register_model(
+                        name=model_info["model_name"],
+                        model_type=model_info["model_type"],
+                        source_url=f"hf://{model_info['model_name']}",
+                        metadata={
+                            "local_path": model_info["local_path"],
+                            "size": model_info["size"],
+                            "source": "discovered_cache",
+                            "auto_discovered": True
+                        }
+                    )
+                    
+                    if success:
+                        logger.info(f"✓ Registered cached model: {model_info['model_name']}")
+                    else:
+                        logger.warning(f"✗ Failed to register: {model_info['model_name']}")
+                        
+                except Exception as e:
+                    logger.warning(f"Error registering model {model_info['model_name']}: {e}")
+                    
+        except Exception as e:
+            logger.error(f"Error during model discovery: {e}") 

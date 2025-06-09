@@ -34,6 +34,15 @@ class ActionType(str, Enum):
     HEALTH_CHECK = "health_check"
 
 
+class ModelStatus(str, Enum):
+    REGISTERED = "registered"     # Just registered, not downloaded yet
+    DOWNLOADING = "downloading"   # Currently downloading
+    READY = "ready"              # Available for use
+    MOVING = "moving"           # Being moved between devices
+    SERVING = "serving"         # Currently serving
+    ERROR = "error"             # Error state
+
+
 # Request/Response Models
 
 class ModelInfo(BaseModel):
@@ -44,6 +53,8 @@ class ModelInfo(BaseModel):
     locations: List[str] = Field(default_factory=list, description="Storage locations")
     services: Dict[str, str] = Field(default_factory=dict, description="Active services: device -> url")
     metadata: Optional[Dict[str, Any]] = None
+    status: str = "registered"  # ✅ Add status field
+    download_progress: Optional[Dict[str, Any]] = None  # ✅ Add progress field
 
 
 class NodeInfo(BaseModel):

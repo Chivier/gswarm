@@ -13,13 +13,19 @@ app = typer.Typer(help="GPU profiling operations")
 def start(
     name: Optional[str] = typer.Option(None, "--name", "-n", help="Name for the profiling session"),
     freq: Optional[int] = typer.Option(None, "--freq", "-f", help="Override sampling frequency"),
-    host: str = typer.Option("localhost:8090", "--host", help="Host address"),
+    host: str = typer.Option(None, "--host", help="Host address (auto-discovered if not specified)"),
 ):
     """Start a profiling session"""
     if not name:
         name = f"profiling_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     
+    # Auto-discover profiler address if not specified
+    if not host:
+        from ..utils.service_discovery import discover_profiler_address
+        host = discover_profiler_address()
+    
     logger.info(f"Starting profiling session: {name}")
+    logger.info(f"Connecting to profiler at: {host}")
     if freq:
         logger.info(f"  Frequency override: {freq}ms")
     
@@ -45,10 +51,16 @@ def start(
 @app.command()
 def stop(
     name: Optional[str] = typer.Option(None, "--name", "-n", help="Name of session to stop"),
-    host: str = typer.Option("localhost:8090", "--host", help="Host address"),
+    host: str = typer.Option(None, "--host", help="Host address (auto-discovered if not specified)"),
 ):
     """Stop profiling session(s)"""
+    # Auto-discover profiler address if not specified
+    if not host:
+        from ..utils.service_discovery import discover_profiler_address
+        host = discover_profiler_address()
+    
     logger.info(f"Stopping profiling session{'s' if not name else f': {name}'}")
+    logger.info(f"Connecting to profiler at: {host}")
     
     async def stop_profiling_async():
         try:
@@ -72,10 +84,16 @@ def stop(
 
 @app.command()
 def status(
-    host: str = typer.Option("localhost:8090", "--host", help="Host address"),
+    host: str = typer.Option(None, "--host", help="Host address (auto-discovered if not specified)"),
 ):
     """Get profiling status"""
+    # Auto-discover profiler address if not specified
+    if not host:
+        from ..utils.service_discovery import discover_profiler_address
+        host = discover_profiler_address()
+    
     logger.info("Getting profiler status...")
+    logger.info(f"Connecting to profiler at: {host}")
     
     async def get_status_async():
         try:
@@ -100,6 +118,18 @@ def status(
                         logger.info(f"    - {client}")
         except Exception as e:
             logger.error(f"Failed to get status: {e}")
+            # Show discovered services for debugging
+            try:
+                from ..utils.service_discovery import get_all_service_ports
+                services = get_all_service_ports()
+                if services:
+                    logger.info("Available services:")
+                    for service_name, port, process_name in services:
+                        logger.info(f"  - {service_name} on port {port} ({process_name})")
+                else:
+                    logger.info("No known services found running")
+            except Exception as discover_error:
+                logger.error(f"Failed to discover services: {discover_error}")
     
     asyncio.run(get_status_async())
 

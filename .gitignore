@@ -178,3 +178,4 @@ llama-test.json
 llama-test.pdf
 
 *.pkl
+.aider*
