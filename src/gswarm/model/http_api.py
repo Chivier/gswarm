@@ -16,7 +16,7 @@ from datetime import datetime
 from loguru import logger
 
 # Import the head module's state and models
-from gswarm.model.head import state
+from gswarm.model.fastapi_head import state
 from gswarm.model.models import (
     RegisterModelRequest, DownloadModelRequest, MoveModelRequest, ServeModelRequest,
     CreateJobRequest, ModelSummary, ListModelsResponse, SystemStatusResponse,

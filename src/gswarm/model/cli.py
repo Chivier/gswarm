@@ -377,6 +377,10 @@ def move(
     node: Optional[str] = typer.Option(None, "--node", "-n", help="Target node (for host commands)"),
 ):
     """Move model between devices (disk, dram, gpu0, etc.)"""
+    # if node is not specified, use the current node
+    if node is None:
+        node = detect_node_context()
+    
     try:
         api_url = get_api_url(node)
         

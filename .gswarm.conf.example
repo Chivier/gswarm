@@ -1,0 +1,59 @@
+# GSwarm Configuration File
+# This file should be placed at ~/.gswarm.conf
+# Configuration is split into host (head node) and client sections
+
+host:
+  # Host/Head node settings
+  host: "0.0.0.0"
+  port: 8100
+  model_port: 8101
+  
+  # Fixed model cache directory
+  model_cache_dir: "~/.cache/gswarm/models"
+  
+  # HuggingFace cache for scanning existing models
+  huggingface_cache_dir: "~/.cache/huggingface"
+  
+  # Logging and discovery
+  log_level: "INFO"
+  max_concurrent_downloads: 3
+  auto_discover_models: true
+  cleanup_on_shutdown: true
+  
+  # Storage device configuration
+  storage_devices:
+    disk:
+      enabled: true
+      path: "~/.cache/gswarm/models"
+    dram:
+      enabled: true
+      path: "/dev/shm/gswarm_models"
+      max_size_gb: 64
+  
+  # Model loading settings
+  load_in_8bit: false
+  load_in_4bit: false
+  trust_remote_code: true
+
+client:
+  # Client node settings
+  host_url: "http://localhost:8100"
+  node_id: null  # Auto-generate if not specified
+  
+  # Client model cache (same as host for consistency)
+  model_cache_dir: "~/.cache/gswarm/models"
+  
+  # Node behavior
+  heartbeat_interval: 30
+  auto_register: true
+  auto_discover_models: true
+  log_level: "INFO"
+  
+  # Memory settings
+  dram_cache_size: 16  # GB
+  gpu_memory_fraction: 0.9
+  
+  # Model serving settings
+  default_gpu_memory_utilization: 0.90
+  enable_tensor_parallel: true
+  max_concurrent_requests: 256 

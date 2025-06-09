@@ -4,34 +4,35 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gswarm"
-version = "0.3.0"
+version = "0.4.0"
 description = "Distributed GPU cluster management system with profiling and model orchestration"
 authors = [
     {name = "Chivier Humber", email = "chivier.humber@outlook.com"},
     {name = "cydia2001", email = "cydia2001@duck.com"},
 ]
 
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
-    "typer>=0.9.0",
+    "aiohttp>=3.9.0,<4.0.0",
+    "typer>=0.9.0,<1.0.0",
     "nvitop>=1.3.0",
     "loguru>=0.7.0",
     "aiofiles>=23.1.0",
-    "requests>=2.32.3",
-    "rich>=14.0.0",
-    "matplotlib>=3.7.5",
-    "numpy>=1.24.4",
-    "grpcio>=1.60.0",
-    "grpcio-tools>=1.60.0",
-    "fastapi>=0.100.0",
-    "uvicorn[standard]>=0.23.0",
-    "pydantic>=2.0.0",
+    "requests>=2.31.0,<3.0.0",
+    "rich>=13.0.0,<15.0.0",
+    "matplotlib>=3.7.0,<4.0.0",
+    "numpy>=1.24.0,<2.0.0",
+    "grpcio>=1.60.0,<2.0.0",
+    "grpcio-tools>=1.60.0,<2.0.0",
+    "protobuf>=5.0.0,<6.0.0",
+    "fastapi>=0.100.0,<1.0.0",
+    "uvicorn[standard]>=0.23.0,<1.0.0",
+    "pydantic>=2.0.0,<3.0.0",
     "pyyaml>=6.0.0",
     "python-multipart>=0.0.18",
-    "asyncio>=3.4.3",
-    "aioredis>=2.0.0",
+    "aioredis>=2.0.0,<3.0.0",
     "psutil>=5.9.0",
-    "httpx>=0.24.0",
+    "httpx>=0.24.0,<1.0.0",
 ]
 
 [project.scripts]
@@ -39,20 +40,19 @@ gswarm = "gswarm.cli:app"
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-cov>=4.0.0",
-    "black>=23.0.0",
-    "ruff>=0.1.0",
-    "mypy>=1.0.0",
+    "pytest>=7.0.0,<8.0.0",
+    "pytest-asyncio>=0.21.0,<1.0.0",
+    "pytest-cov>=4.0.0,<5.0.0",
+    "black>=23.0.0,<25.0.0",
+    "ruff>=0.1.0,<1.0.0",
+    "mypy>=1.0.0,<2.0.0",
 ]
 vllm = [
-    "vllm>=0.3.0",
-    "transformers>=4.38.0",
-    "accelerate>=0.27.0",
-    "bitsandbytes>=0.42.0",
-    "flash-attn>=2.5.0",
-    "xformers>=0.0.23",
+    "vllm>=0.9.0,<0.10.0",
+    "transformers>=4.44.0",
+    "accelerate>=0.24.0",
+    "torch>=2.1.0",
+    "torchvision>=0.16.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -67,10 +67,10 @@ ignore = ["F401", "I001", "E501", "F541"]
 
 [tool.black]
 line-length = 120
-target-version = ["py38", "py39", "py310", "py311"]
+target-version = ["py39", "py310", "py311", "py312"]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.9"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
