@@ -59,6 +59,7 @@ class ResilientClient:
         
         # Adaptive sampler (initialized when needed)
         self.adaptive_sampler = None
+        self._printed_sampling_config = False  # Track if we've printed sampling config
 
     def _init_gpu_info(self):
         """Initialize GPU information"""
@@ -86,9 +87,12 @@ class ResilientClient:
             
             if self.use_adaptive and not self.adaptive_sampler:
                 self.adaptive_sampler = AdaptiveSampler()
-                logger.info("Using adaptive sampling strategy (configured by host)")
-            elif not self.use_adaptive:
+                if not self._printed_sampling_config:
+                    logger.info("Using adaptive sampling strategy (configured by host)")
+                    self._printed_sampling_config = True
+            elif not self.use_adaptive and not self._printed_sampling_config:
                 logger.info(f"Using fixed frequency sampling: {self.freq_ms}ms (configured by host)")
+                self._printed_sampling_config = True
             
             # Also get bandwidth config from host
             self.enable_bandwidth = status.enable_bandwidth_profiling
