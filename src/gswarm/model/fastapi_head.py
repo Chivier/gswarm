@@ -25,7 +25,7 @@ from gswarm.model.fastapi_models import (
 )
 
 # Import enhanced utilities
-from gswarm.utils.config import load_config, get_model_cache_dir, get_dram_cache_dir
+from gswarm.utils.config import load_config, get_model_cache_dir, get_dram_cache_dir, HostConfig, GSwarmConfig
 from gswarm.utils.cache import (
     model_storage, scan_all_models, save_model_to_disk, 
     load_safetensors_to_dram
@@ -37,8 +37,8 @@ config = load_config()
 
 app = FastAPI(
     title="GSwarm Model Manager",
-    description="Enhanced Model Management API with GPU serving support",
-    version="0.5.0"
+    description="Simplified Model Management API",
+    version="0.6.0"
 )
 
 
@@ -97,10 +97,7 @@ class HeadState:
         self.jobs: Dict[str, Dict] = {}
         self.vllm_servers: Dict[str, VLLMServer] = {}  # instance_id -> VLLMServer
         self.model_checkpoints: Dict[str, Dict[str, str]] = {}  # model_name -> {device: path}
-        
-        # Initialize model discovery on startup
-        if config.host.auto_discover_models:
-            asyncio.create_task(self.discover_and_register_models())
+        self.discovery_completed = False
     
     async def discover_and_register_models(self):
         """Discover and register existing models on startup"""
@@ -245,8 +242,7 @@ async def get_config():
     return {
         "model_cache_dir": str(get_model_cache_dir()),
         "dram_cache_dir": str(get_dram_cache_dir()),
-        "auto_discover_models": config.host.auto_discover_models,
-        "storage_devices": config.host.storage_devices
+        "model_manager_port": config.host.model_manager_port
     }
 
 
@@ -643,24 +639,19 @@ async def serve_model(request: ServeRequest):
         env = dict(os.environ)
         env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
         
-        # Add config options from global config and request
-        gpu_memory_util = config.client.default_gpu_memory_utilization
+        # Add config options from request only
+        gpu_memory_util = 0.9  # Default value
         if request.config and "gpu_memory_utilization" in request.config:
             gpu_memory_util = request.config["gpu_memory_utilization"]
         vllm_cmd.extend(["--gpu-memory-utilization", str(gpu_memory_util)])
         
-        # Add tensor parallel if enabled
-        if config.client.enable_tensor_parallel and torch.cuda.device_count() > 1:
-            vllm_cmd.extend(["--tensor-parallel-size", "1"])  # Single GPU for now
-        
-        # Add max concurrent requests
-        vllm_cmd.extend(["--max-num-seqs", str(config.client.max_concurrent_requests)])
+        # Add max concurrent requests (default)
+        vllm_cmd.extend(["--max-num-seqs", "256"])
         
         # Optimize for fast loading from DRAM
         if request.source_device == "dram":
             env["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
             if request.config and request.config.get("use_pinned_memory", True):
-                # Use pinned memory for faster CPU-GPU transfer
                 env["CUDA_LAUNCH_BLOCKING"] = "0"
             
             # Check if model is already loaded in DRAM variables
@@ -955,6 +946,7 @@ async def discover_models():
     """Manually trigger model discovery and registration"""
     try:
         await state.discover_and_register_models()
+        state.discovery_completed = True
         
         return StandardResponse(
             success=True,
@@ -1077,7 +1069,11 @@ async def startup_event():
     logger.info("Starting GSwarm Model Manager...")
     logger.info(f"Model cache directory: {get_model_cache_dir()}")
     logger.info(f"DRAM cache directory: {get_dram_cache_dir()}")
-    logger.info(f"Auto-discover models: {config.host.auto_discover_models}")
+    
+    # Start model discovery
+    logger.info("Starting model discovery...")
+    await state.discover_and_register_models()
+    state.discovery_completed = True
 
 
 @app.on_event("shutdown")
@@ -1090,19 +1086,30 @@ async def shutdown_event():
     for server in state.vllm_servers.values():
         server.stop()
     
-    # Clean up model variables if configured
-    if config.host.cleanup_on_shutdown:
-        logger.info("Cleaning up model variables...")
-        for model_name in model_storage.list_dram_models():
-            model_storage.remove_dram_model(model_name)
-        for instance_id in model_storage.list_gpu_models():
-            model_storage.remove_gpu_model(instance_id)
-    
     logger.info("Shutdown complete")
 
 
-def create_app() -> FastAPI:
+def create_app(host: Optional[str] = None, port: Optional[int] = None, 
+               model_port: Optional[int] = None, **kwargs) -> FastAPI:
     """Factory function to create and return the FastAPI app instance"""
+    global config
+    
+    # Override config with CLI parameters if provided
+    if host is not None or port is not None or model_port is not None:
+        logger.info("Applying CLI parameter overrides to configuration...")
+        
+        # Create a new config instance with overrides
+        host_config = HostConfig(
+            huggingface_cache_dir=config.host.huggingface_cache_dir,
+            model_cache_dir=config.host.model_cache_dir,
+            model_manager_port=model_port if model_port is not None else config.host.model_manager_port,
+            gswarm_grpc_port=port if port is not None else config.host.gswarm_grpc_port,
+            gswarm_http_port=config.host.gswarm_http_port
+        )
+        
+        config = GSwarmConfig(host=host_config, client=config.client)
+        logger.info(f"Configuration overridden - Port: {config.host.gswarm_grpc_port}, Model Port: {config.host.model_manager_port}")
+    
     return app
 
 

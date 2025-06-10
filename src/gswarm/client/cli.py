@@ -7,6 +7,7 @@ import sys
 import platform
 from typing import Optional
 from loguru import logger
+from ..utils.connection_info import save_host_connection, clear_connection_info
 
 app = typer.Typer(help="Client node management commands")
 
@@ -88,6 +89,15 @@ def connect(
         host = host_address
         port = 8090
 
+    # Save connection info
+    save_host_connection(
+        host=host,
+        profiler_grpc_port=port,
+        profiler_http_port=port + 1,  # Assuming HTTP is on next port
+        model_api_port=port + 920,  # Default offset
+        node_id=node_id or platform.node()
+    )
+
     # Update client state
     client_state.host_address = host_address
     client_state.node_id = node_id or platform.node()
@@ -127,6 +137,9 @@ def disconnect():
         return
     
     logger.info(f"Disconnecting from host at {client_state.host_address}...")
+    
+    # Clear connection info
+    clear_connection_info()
     
     try:
         # Signal shutdown

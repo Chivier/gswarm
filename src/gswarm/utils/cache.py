@@ -287,7 +287,7 @@ def detect_model_type(model_dir: Path) -> str:
             if any("llama" in arch.lower() for arch in architectures):
                 return "llm"
             elif any("bert" in arch.lower() for arch in architectures):
-                return "embedding"
+                return "llm"
             elif any("clip" in arch.lower() for arch in architectures):
                 return "multimodal"
             elif any("diffusion" in arch.lower() or "unet" in arch.lower() for arch in architectures):
@@ -295,12 +295,12 @@ def detect_model_type(model_dir: Path) -> str:
             elif "text" in model_type or any("gpt" in arch.lower() for arch in architectures):
                 return "llm"
             else:
-                return "unknown"
+                return "llm"
                 
         except Exception as e:
             logger.warning(f"Could not parse config.json: {e}")
     
-    return "unknown"
+    return "llm"
 
 
 def get_directory_size(path: Path) -> int:

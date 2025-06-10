@@ -4,22 +4,34 @@ import psutil
 import grpc
 from typing import Optional, List, Tuple
 from loguru import logger
+from .connection_info import connection_manager
 
 
 def get_process_using_port(port: int) -> Optional[psutil.Process]:
     """Find process using a specific port"""
-    for proc in psutil.process_iter(['pid', 'name', 'connections']):
-        try:
-            for conn in proc.info['connections'] or []:
-                if conn.laddr.port == port:
-                    return psutil.Process(proc.info['pid'])
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            continue
+    try:
+        # Use connections() method instead of 'connections' attribute
+        for proc in psutil.process_iter(['pid', 'name']):
+            try:
+                # Get connections separately
+                connections = proc.connections(kind='inet')
+                for conn in connections:
+                    if hasattr(conn, 'laddr') and conn.laddr.port == port:
+                        return proc
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+    except Exception as e:
+        logger.debug(f"Error checking processes: {e}")
     return None
 
 
 def find_profiler_grpc_port(default_ports: List[int] = None) -> Optional[int]:
     """Find the port where profiler gRPC service is running"""
+    # First check connection info
+    conn_info = connection_manager.load_connection()
+    if conn_info:
+        return conn_info.profiler_grpc_port
+    
     if default_ports is None:
         default_ports = [8090, 8091, 8092, 8093, 8094, 8095]  # Common profiler ports
     
@@ -64,6 +76,12 @@ def find_profiler_grpc_port(default_ports: List[int] = None) -> Optional[int]:
 
 def discover_profiler_address(host: str = "localhost") -> str:
     """Discover the profiler gRPC address"""
+    # First check connection info
+    conn_info = connection_manager.load_connection()
+    if conn_info:
+        return f"{conn_info.host_address}:{conn_info.profiler_grpc_port}"
+    
+    # Try to discover
     port = find_profiler_grpc_port()
     if port:
         return f"{host}:{port}"
@@ -79,6 +97,16 @@ def get_all_service_ports() -> List[Tuple[str, int, Optional[str]]]:
     Returns:
         List of (service_name, port, process_name) tuples
     """
+    # Check connection info first
+    conn_info = connection_manager.load_connection()
+    if conn_info:
+        return [
+            ("profiler_grpc", conn_info.profiler_grpc_port, "gswarm"),
+            ("profiler_http", conn_info.profiler_http_port, "gswarm"),
+            ("model_api", conn_info.model_api_port, "gswarm")
+        ]
+    
+    # Otherwise try to discover
     known_services = {
         8090: "profiler_grpc",
         8091: "profiler_http", 

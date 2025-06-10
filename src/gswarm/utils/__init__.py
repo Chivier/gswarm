@@ -13,11 +13,9 @@ from .config import (
     get_dram_cache_dir, get_huggingface_cache_dir,
     GSwarmConfig, HostConfig, ClientConfig
 )
-from .service_discovery import (
-    discover_profiler_address, 
-    find_profiler_grpc_port, 
-    get_all_service_ports,
-    get_process_using_port
+from .connection_info import (
+    ConnectionInfo, ConnectionManager, connection_manager,
+    save_host_connection, get_connection_info, clear_connection_info
 )
 
 __all__ = [
@@ -43,9 +41,11 @@ __all__ = [
     'HostConfig', 
     'ClientConfig',
     
-    # Service discovery
-    'discover_profiler_address',
-    'find_profiler_grpc_port', 
-    'get_all_service_ports',
-    'get_process_using_port'
+    # Connection info functions
+    'ConnectionInfo',
+    'ConnectionManager',
+    'connection_manager',
+    'save_host_connection',
+    'get_connection_info',
+    'clear_connection_info'
 ] 

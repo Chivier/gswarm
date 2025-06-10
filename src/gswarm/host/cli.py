@@ -11,6 +11,7 @@ import os
 import requests
 import grpc
 from pathlib import Path
+from ..utils.connection_info import save_host_connection
 
 app = typer.Typer(help="Host node management commands")
 
@@ -144,7 +145,7 @@ def start(
         # Start profiler in background
         # Start model service
         import uvicorn
-        model_app = create_model_app()
+        model_app = create_model_app(host=host, port=port, model_port=model_port)
 
         # Create tasks for both services
         profiler_task = asyncio.create_task(
@@ -172,6 +173,14 @@ def start(
         asyncio.run(run_all_services())
     except KeyboardInterrupt:
         logger.info("Host node stopped")
+
+    # Add this to the start command after services are started
+    save_host_connection(
+        host=host or "localhost",
+        profiler_grpc_port=port,
+        profiler_http_port=http_port,
+        model_api_port=model_port
+    )
 
 @app.command()
 def stop():

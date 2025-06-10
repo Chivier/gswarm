@@ -23,17 +23,17 @@ app = typer.Typer(
     rich_markup_mode="rich"
 )
 
-# Configuration - these would normally come from a config file
-DEFAULT_HOST_URL = "http://localhost:8091"  # HTTP API port
-DEFAULT_MODEL_API_URL = "http://localhost:9010"  # Model API port
-
-MODEL_API_URL = os.getenv("MODEL_API_URL", DEFAULT_MODEL_API_URL)
+# Import connection manager
+from ..utils.connection_info import connection_manager
 
 
 def handle_api_error(feature: str, response: requests.exceptions.RequestException):
     """Handle API errors and log them"""
-    if response.response is not None:
-        error_message = response.response.json().get("detail", "Unknown error")
+    if hasattr(response, 'response') and response.response is not None:
+        try:
+            error_message = response.response.json().get("detail", "Unknown error")
+        except:
+            error_message = response.response.text or "Unknown error"
         logger.error(f"{feature} failed: {error_message}")
     else:
         logger.error(f"{feature} API request failed: {response}")
@@ -42,24 +42,13 @@ def handle_api_error(feature: str, response: requests.exceptions.RequestExceptio
 def detect_node_context() -> Optional[str]:
     """Detect current node context for client operations"""
     try:
-        # Check if we're on a client by looking for gRPC connection info
-        # This is a simplified detection - in production, you might store client config
-        hostname = platform.node()
+        # Check if we're on a client by looking for connection info
+        conn_info = connection_manager.load_connection()
+        if conn_info and conn_info.node_id:
+            return conn_info.node_id
         
-        # Try to check if there's an active profiler client connection
-        # by looking for specific processes or config files
-        from ..utils.service_discovery import get_all_service_ports
-        services = get_all_service_ports()
-        
-        # If model_api is running locally, we're likely on host
-        for service_name, port, _ in services:
-            if service_name == "model_api":
-                return None  # We're on host
-        
-        # If only profiler services are running, we might be on client
-        # For now, return hostname as node context
-        # In production, this should read from client config or connection state
-        return hostname
+        # Otherwise return hostname
+        return platform.node()
         
     except Exception:
         # Fall back to hostname if detection fails
@@ -67,30 +56,8 @@ def detect_node_context() -> Optional[str]:
 
 
 def get_api_url(node: Optional[str] = None) -> str:
-    """Get the appropriate API URL based on whether we're on host or client"""
-    # If node is explicitly specified, use default API URL 
-    # (assumes we're routing through host)
-    if node:
-        return MODEL_API_URL
-    
-    # Try to detect if we're on host or client
-    try:
-        from ..utils.service_discovery import get_all_service_ports
-        services = get_all_service_ports()
-        
-        # Check if model API is running locally (we're on host)
-        for service_name, port, _ in services:
-            if service_name == "model_api":
-                return MODEL_API_URL
-        
-        # If no local model API, we might be on client
-        # For now, still use default URL (host routing)
-        # In production, this should route to the connected host
-        return MODEL_API_URL
-        
-    except Exception:
-        # Fall back to default
-        return MODEL_API_URL
+    """Get the appropriate API URL based on connection info"""
+    return connection_manager.get_model_api_url()
 
 
 def find_model_location(api_url: str, model_name: str) -> Optional[str]:
