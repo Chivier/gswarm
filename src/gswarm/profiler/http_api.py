@@ -17,6 +17,7 @@ app = FastAPI(
 # Pydantic models for request/response
 class StartProfilingRequest(BaseModel):
     name: Optional[str] = None
+    report_metrics: List[str] = None
 
 
 class ProfilingResponse(BaseModel):
@@ -93,6 +94,7 @@ async def start_profiling(request: StartProfilingRequest):
             state.gpu_util_count = {}
             state.gpu_total_memory = {}
             state.gpu_memory_count = {}
+            state.report_metrics = request.report_metrics
 
         # Import the collect function from head module
         from gswarm.profiler.head import collect_and_store_frame

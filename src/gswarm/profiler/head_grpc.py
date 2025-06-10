@@ -15,7 +15,7 @@ import nvitop
 from gswarm.profiler. import profiler_pb2
 from gswarm.profiler. import profiler_pb2_grpc
 
-from gswarm.profiler.utils import draw_basic_metrics
+from gswarm.profiler.utils import draw_metrics
 
 
 # --- Global State for Head Node ---
@@ -350,7 +350,7 @@ async def collect_and_store_frame():
             async with aiofiles.open(state.output_filename, mode="w") as f:
                 await f.write(json.dumps(output_data, indent=2))
             logger.info(f"Profiling data successfully saved to {state.output_filename}")
-            draw_basic_metrics(output_data, state.report_filename)
+            draw_metrics(output_data, state.report_filename, state.report_metrics)
             
         except Exception as e:
             logger.error(f"Failed to save profiling data: {e}")
