@@ -33,6 +33,7 @@ dependencies = [
     "aioredis>=2.0.0,<3.0.0",
     "psutil>=5.9.0",
     "httpx>=0.24.0,<1.0.0",
+    "seaborn>=0.13.2",
 ]
 
 [project.scripts]
