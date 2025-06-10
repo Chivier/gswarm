@@ -144,7 +144,7 @@ async def register_model(model_name: str, request: RegisterModelRequest):
             logger.info(f"Registered model {model_name} of type {request.model_type}")
         
         if state.enable_persistence:
-            from gswarm.model.head import save_registry
+            from gswarm.model.fastapi_head import save_registry
             await save_registry()
         
         return StandardResponse(
