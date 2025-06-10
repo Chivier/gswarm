@@ -179,3 +179,6 @@ llama-test.pdf
 
 *.pkl
 .aider*
+.gswarm
+.gswarm_model_data
+.gswarm_profiler_data

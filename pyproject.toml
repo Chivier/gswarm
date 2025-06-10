@@ -10,7 +10,7 @@ authors = [
     {name = "Chivier Humber", email = "chivier.humber@outlook.com"},
     {name = "cydia2001", email = "cydia2001@duck.com"},
 ]
-
+readme="README.md"
 requires-python = ">=3.9"
 dependencies = [
     "aiohttp>=3.9.0,<4.0.0",
