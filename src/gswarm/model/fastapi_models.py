@@ -11,6 +11,7 @@ import uuid
 
 class ModelType(str, Enum):
     """Supported model types"""
+
     LLM = "llm"
     DIFFUSION = "diffusion"
     VISION = "vision"
@@ -20,12 +21,14 @@ class ModelType(str, Enum):
 
 class StorageType(str, Enum):
     """Storage device types - GPU removed as it's not for storage"""
+
     DISK = "disk"
     DRAM = "dram"
 
 
 class CopyMethod(str, Enum):
     """Copy methods between devices"""
+
     DISK_TO_DRAM = "disk_to_dram"
     DRAM_TO_DISK = "dram_to_disk"
     GPU_TO_DRAM = "gpu_to_dram"
@@ -37,6 +40,7 @@ class CopyMethod(str, Enum):
 
 class ActionType(str, Enum):
     """Job action types"""
+
     DOWNLOAD = "download"
     COPY = "copy"
     SERVE = "serve"
@@ -46,31 +50,38 @@ class ActionType(str, Enum):
 
 
 class ModelStatus(str, Enum):
-    REGISTERED = "registered"     # Just registered, not downloaded yet
-    DOWNLOADING = "downloading"   # Currently downloading
-    READY = "ready"              # Available for use (on disk/dram)
-    COPYING = "copying"          # Being copied between devices
-    SERVING = "serving"         # Currently serving on GPU
-    ERROR = "error"             # Error state
+    REGISTERED = "registered"  # Just registered, not downloaded yet
+    DOWNLOADING = "downloading"  # Currently downloading
+    READY = "ready"  # Available for use (on disk/dram)
+    COPYING = "copying"  # Being copied between devices
+    SERVING = "serving"  # Currently serving on GPU
+    ERROR = "error"  # Error state
 
 
 # Request/Response Models
 
+
 class ModelInstance(BaseModel):
     """Instance of a model with unique ID"""
+
     instance_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     model_name: str
     type: ModelType
     size: Optional[int] = Field(None, description="Size in bytes")
-    checkpoints: Dict[str, str] = Field(default_factory=dict, description="Storage locations: device -> path (only disk/dram)")
-    serving_instances: Dict[str, Dict[str, Any]] = Field(default_factory=dict, description="Active services: instance_id -> {device, url, port, pid}")
+    checkpoints: Dict[str, str] = Field(
+        default_factory=dict, description="Storage locations: device -> path (only disk/dram)"
+    )
+    serving_instances: Dict[str, Dict[str, Any]] = Field(
+        default_factory=dict, description="Active services: instance_id -> {device, url, port, pid}"
+    )
     metadata: Optional[Dict[str, Any]] = None
     status: ModelStatus = ModelStatus.REGISTERED
     created_at: datetime = Field(default_factory=datetime.now)
-    
-    
+
+
 class ModelInfo(BaseModel):
     """Basic model information (backward compatibility)"""
+
     name: str
     type: ModelType
     size: Optional[int] = Field(None, description="Size in bytes")
@@ -83,17 +94,21 @@ class ModelInfo(BaseModel):
 
 class NodeInfo(BaseModel):
     """Node information"""
+
     node_id: str
     hostname: str
     ip_address: str
     storage_devices: Dict[str, Dict[str, Any]] = Field(default_factory=dict, description="Device info")
-    gpu_devices: Dict[str, Dict[str, Any]] = Field(default_factory=dict, description="GPU info: gpu0 -> {memory, compute_capability}")
+    gpu_devices: Dict[str, Dict[str, Any]] = Field(
+        default_factory=dict, description="GPU info: gpu0 -> {memory, compute_capability}"
+    )
     gpu_count: int = 0
     last_seen: datetime = Field(default_factory=datetime.now)
 
 
 class RegisterModelRequest(BaseModel):
     """Request to register a model"""
+
     name: str
     type: ModelType
     source_url: Optional[str] = None
@@ -102,6 +117,7 @@ class RegisterModelRequest(BaseModel):
 
 class DownloadRequest(BaseModel):
     """Request to download a model"""
+
     model_name: str
     source_url: str
     target_device: str  # Must be disk or dram
@@ -109,6 +125,7 @@ class DownloadRequest(BaseModel):
 
 class CopyRequest(BaseModel):
     """Request to copy a model between devices"""
+
     model_name: str
     source_device: str
     target_device: str
@@ -120,6 +137,7 @@ class CopyRequest(BaseModel):
 
 class ServeRequest(BaseModel):
     """Request to serve a model on GPU"""
+
     model_name: str
     source_device: str  # Where to load from (disk/dram)
     gpu_device: str  # Target GPU (e.g., gpu0, gpu1)
@@ -130,12 +148,14 @@ class ServeRequest(BaseModel):
 
 class StopServeRequest(BaseModel):
     """Request to stop serving a specific instance"""
+
     model_name: str
     instance_id: str  # Specific instance to stop
 
 
 class JobRequest(BaseModel):
     """Simple job request"""
+
     name: str
     description: Optional[str] = None
     actions: List[Dict[str, Any]]
@@ -143,6 +163,7 @@ class JobRequest(BaseModel):
 
 class StandardResponse(BaseModel):
     """Standard API response"""
+
     success: bool
     message: str
     data: Optional[Dict[str, Any]] = None
@@ -150,6 +171,7 @@ class StandardResponse(BaseModel):
 
 class ModelServingStatus(BaseModel):
     """Status of a serving model instance"""
+
     instance_id: str
     model_name: str
     gpu_device: str
@@ -159,4 +181,4 @@ class ModelServingStatus(BaseModel):
     status: str  # running, loading, error
     started_at: datetime
     last_health_check: Optional[datetime] = None
-    memory_usage: Optional[Dict[str, Any]] = None  # GPU memory stats 
+    memory_usage: Optional[Dict[str, Any]] = None  # GPU memory stats

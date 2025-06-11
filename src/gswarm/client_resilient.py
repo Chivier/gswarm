@@ -25,7 +25,7 @@ class ResilientClient:
         self.head_address = head_address
         self.enable_bandwidth = enable_bandwidth
         self.hostname = platform.node()
-        
+
         # Sampling configuration from host
         self.freq_ms = 200  # Default until we get config from host
         self.use_adaptive = False
@@ -39,7 +39,7 @@ class ResilientClient:
         # Buffering
         self.buffer = deque(maxlen=10000)  # Buffer up to 10k frames
         self.buffer_lock = asyncio.Lock()
-        
+
         # Historical data storage for adaptive sampling
         self.metrics_history = deque(maxlen=1000)  # Store last 1000 metrics with timestamps
         self.history_lock = asyncio.Lock()
@@ -56,7 +56,7 @@ class ResilientClient:
         # Initialize GPU info
         self.gpu_infos = []
         self._init_gpu_info()
-        
+
         # Adaptive sampler (initialized when needed)
         self.adaptive_sampler = None
 
@@ -82,17 +82,17 @@ class ResilientClient:
         try:
             status = await self.stub.GetStatus(profiler_pb2.Empty())
             self.freq_ms = status.freq if status.freq > 0 else 0
-            self.use_adaptive = (status.freq == 0)
-            
+            self.use_adaptive = status.freq == 0
+
             if self.use_adaptive and not self.adaptive_sampler:
                 self.adaptive_sampler = AdaptiveSampler()
                 logger.info("Using adaptive sampling strategy (configured by host)")
             elif not self.use_adaptive:
                 logger.info(f"Using fixed frequency sampling: {self.freq_ms}ms (configured by host)")
-            
+
             # Also get bandwidth config from host
             self.enable_bandwidth = status.enable_bandwidth_profiling
-            
+
             return True
         except Exception as e:
             logger.warning(f"Failed to get host config: {e}. Using defaults.")
@@ -126,7 +126,7 @@ class ResilientClient:
             logger.info(f"Connected successfully: {connect_response.message}")
             self.connected = True
             self.reconnect_delay = 1  # Reset delay on successful connection
-            
+
             # Get configuration from host
             await self._get_host_config()
 
@@ -145,7 +145,7 @@ class ResilientClient:
 
 def start_resilient_client(head_address: str, enable_bandwidth: bool):
     """Start the resilient client
-    
+
     Args:
         head_address: Address of the head node
         enable_bandwidth: Whether to collect bandwidth metrics (can be overridden by host)
@@ -155,4 +155,4 @@ def start_resilient_client(head_address: str, enable_bandwidth: bool):
     try:
         asyncio.run(client.run())
     except KeyboardInterrupt:
-        pass 
+        pass

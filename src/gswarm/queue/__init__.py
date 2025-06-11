@@ -1,1 +1,1 @@
-"""Task queue management functionality""" 
+"""Task queue management functionality"""

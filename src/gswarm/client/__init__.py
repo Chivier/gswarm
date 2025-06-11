@@ -1,1 +1,1 @@
-"""Client node functionality""" 
+"""Client node functionality"""

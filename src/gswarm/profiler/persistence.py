@@ -49,10 +49,11 @@ class FileBasedStorage(PersistentStorage):
         if base_dir is None:
             # Use cache directory by default
             from gswarm.utils.cache import get_cache_dir
+
             self.base_dir = get_cache_dir() / "profiler"
         else:
             self.base_dir = Path(base_dir)
-        
+
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self._locks: Dict[str, asyncio.Lock] = {}
 

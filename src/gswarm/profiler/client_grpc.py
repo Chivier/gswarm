@@ -244,7 +244,7 @@ async def run_client_node(head_address: str, enable_bandwidth: bool):
                     while True:
                         # Check if we should sample GPU metrics
                         metrics_payload = await collect_gpu_metrics(enable_bandwidth)
-                        
+
                         # Let the sampler decide if we should send this update
                         should_send = False
                         for gpu in metrics_payload.get("gpus_metrics", []):
@@ -252,11 +252,11 @@ async def run_client_node(head_address: str, enable_bandwidth: bool):
                                 should_send = True
                                 sampler.update_metric("gpu_util", gpu["gpu_util"])
                                 break
-                        
+
                         if should_send:
                             grpc_update = dict_to_grpc_metrics_update(hostname, metrics_payload)
                             yield grpc_update
-                        
+
                         # Adaptive sleep based on metric activity
                         await asyncio.sleep(1.0)  # Base rate, will be throttled by sampler
 

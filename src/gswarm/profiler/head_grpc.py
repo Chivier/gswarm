@@ -12,8 +12,8 @@ import os
 import nvitop
 
 # Import generated protobuf classes
-from gswarm.profiler. import profiler_pb2
-from gswarm.profiler. import profiler_pb2_grpc
+from gswarm.profiler import profiler_pb2
+from gswarm.profiler import profiler_pb2_grpc
 
 from gswarm.profiler.utils import draw_metrics
 
@@ -351,7 +351,7 @@ async def collect_and_store_frame():
                 await f.write(json.dumps(output_data, indent=2))
             logger.info(f"Profiling data successfully saved to {state.output_filename}")
             draw_metrics(output_data, state.report_filename, state.report_metrics)
-            
+
         except Exception as e:
             logger.error(f"Failed to save profiling data: {e}")
     else:

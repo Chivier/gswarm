@@ -1,1 +1,1 @@
-"""Host node functionality""" 
+"""Host node functionality"""

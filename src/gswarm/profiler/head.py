@@ -45,7 +45,7 @@ class HeadNodeState:
         self.profiling_task: asyncio.Task = None
         self.enable_bandwidth_profiling: bool = False
         self.enable_nvlink_profiling: bool = False
-        
+
         # Sampling configuration
         self.freq: int = 200  # Default 200ms, 0 for adaptive
 
@@ -492,7 +492,9 @@ async def run_both_servers(grpc_host: str, grpc_port: int, http_host: str, http_
             pass
 
 
-def run_head_node(host: str, port: int, enable_bandwidth: bool, enable_nvlink: bool, http_port: int = None, freq: int = 200):
+def run_head_node(
+    host: str, port: int, enable_bandwidth: bool, enable_nvlink: bool, http_port: int = None, freq: int = 200
+):
     """Run the head node with gRPC server and optionally HTTP server"""
     # Check port availability before starting
     if not check_port_availability(host, port):
@@ -511,14 +513,14 @@ def run_head_node(host: str, port: int, enable_bandwidth: bool, enable_nvlink: b
     if http_port:
         logger.info(f"HTTP API will be available on {host}:{http_port}")
     logger.info(f"Bandwidth profiling: {'Enabled' if enable_bandwidth else 'Disabled'}")
-    
+
     # Set sampling configuration
     state.freq = freq
     if freq == 0:
         logger.info(f"Using adaptive sampling strategy (similar to WandB)")
     else:
         logger.info(f"Using fixed frequency sampling: {freq}ms")
-    
+
     state.enable_bandwidth_profiling = enable_bandwidth
     state.enable_nvlink_profiling = enable_nvlink
 

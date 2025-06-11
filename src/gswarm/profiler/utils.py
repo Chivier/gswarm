@@ -13,6 +13,7 @@ class GPUData(BaseModel):
     gpu_memory: list[float]
     gpu_dram_bandwidth: list[float]
 
+
 def parse_frame_data(data) -> List[GPUData] | None:
     frames = data["frames"]
     if not frames:
@@ -31,14 +32,14 @@ def parse_frame_data(data) -> List[GPUData] | None:
                 logger.warning(f"Key 'dram_bandwidth' not found in frame data for GPU {gpu_name}. Setting to zero.")
                 gpu_dram_bandwidth = [0.0] * len(frames)
 
-            gpu_data_list.append(GPUData(
-                gpu_name=gpu_name,
-                gpu_util=gpu_util,
-                gpu_memory=gpu_memory,
-                gpu_dram_bandwidth=gpu_dram_bandwidth
-            ))
+            gpu_data_list.append(
+                GPUData(
+                    gpu_name=gpu_name, gpu_util=gpu_util, gpu_memory=gpu_memory, gpu_dram_bandwidth=gpu_dram_bandwidth
+                )
+            )
 
         return gpu_data_list
+
 
 def draw_gpu_utilization(gpu_datalist, frame_ids, ax):
     for gpu_data in gpu_datalist:
@@ -50,6 +51,7 @@ def draw_gpu_utilization(gpu_datalist, frame_ids, ax):
     ax.grid(True)
     ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
 
+
 def draw_gpu_memory(gpu_datalist, frame_ids, ax):
     for gpu_data in gpu_datalist:
         ax.plot(frame_ids, gpu_data.gpu_memory, marker="o", linestyle="-", label=gpu_data.gpu_name)
@@ -59,6 +61,7 @@ def draw_gpu_memory(gpu_datalist, frame_ids, ax):
     ax.legend(loc="upper left", bbox_to_anchor=(1, 1))
     ax.grid(True)
     ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+
 
 def draw_gpu_dram_bandwidth(gpu_datalist, frame_ids, ax):
     for gpu_data in gpu_datalist:
@@ -73,9 +76,9 @@ def draw_gpu_dram_bandwidth(gpu_datalist, frame_ids, ax):
 
 def draw_gpu_util_bubble(gpu_datalist, frame_ids, ax):
     gpu_util_matrix = np.array([gpu_data.gpu_util for gpu_data in gpu_datalist])
-    
+
     # Create a heatmap showing GPU utilization bubbles
-    im = ax.imshow(gpu_util_matrix, cmap='RdYlBu_r', aspect='auto', interpolation='nearest')
+    im = ax.imshow(gpu_util_matrix, cmap="RdYlBu_r", aspect="auto", interpolation="nearest")
     ax.set_title("GPU Utilization Heatmap")
     ax.set_xlabel("Frame ID")
     ax.set_ylabel("GPU Index")
@@ -85,35 +88,34 @@ def draw_gpu_util_bubble(gpu_datalist, frame_ids, ax):
 
     # Add colorbar
     cbar = plt.colorbar(im, ax=ax, shrink=0.8)
-    cbar.set_label('GPU Utilization (%)')
+    cbar.set_label("GPU Utilization (%)")
 
     # Add text annotations for better readability
-    for i in range(gpu_util_matrix.shape[0]):
-        for j in range(min(gpu_util_matrix.shape[1], 20)):  # Limit annotations for readability
-            text = ax.text(j, i, f'{gpu_util_matrix[i, j]:.1f}', 
-                          ha="center", va="center", color="black", fontsize=8)
-    
+    # for i in range(gpu_util_matrix.shape[0]):
+    #     for j in range(min(gpu_util_matrix.shape[1], 20)):  # Limit annotations for readability
+    #         text = ax.text(j, i, f"{gpu_util_matrix[i, j]:.1f}", ha="center", va="center", color="black", fontsize=8)
 
 
 metrics_mapping = {
     "gpu_utilization": draw_gpu_utilization,
     "gpu_memory": draw_gpu_memory,
     "gpu_dram_bandwidth": draw_gpu_dram_bandwidth,
-    "gpu_bubble": draw_gpu_util_bubble
+    "gpu_bubble": draw_gpu_util_bubble,
 }
 
 default_metrics = ["gpu_utilization", "gpu_memory", "gpu_dram_bandwidth"]
 
-def draw_metrics(data, target_filename, enable_metrics = None):
+
+def draw_metrics(data, target_filename, enable_metrics=None):
     if enable_metrics is None or len(enable_metrics) == 0:
         enable_metrics = default_metrics
-    
+
     logger.info(f"Drawing metrics: {enable_metrics}")
     num_metrics = len(enable_metrics)
     if num_metrics == 0:
         logger.error("No metrics to draw.")
         return
-    
+
     gpu_data_list = parse_frame_data(data)
     if gpu_data_list is None:
         logger.error("No GPU data found in the frames.")
@@ -130,4 +132,3 @@ def draw_metrics(data, target_filename, enable_metrics = None):
     plt.tight_layout(rect=[0, 0, 0.85, 1])
     logger.info(f"Saving plot to {target_filename}")
     plt.savefig(target_filename)
-    

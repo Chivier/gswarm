@@ -12,6 +12,7 @@ from loguru import logger
 @dataclass
 class HostConfig:
     """Host/Head node configuration"""
+
     huggingface_cache_dir: str = "~/.cache/huggingface"
     model_cache_dir: str = "~/.cache/gswarm/models"
     model_manager_port: int = 8101
@@ -19,9 +20,10 @@ class HostConfig:
     gswarm_http_port: int = 8090
 
 
-@dataclass 
+@dataclass
 class ClientConfig:
     """Client node configuration"""
+
     host_url: str = "0.0.0.0:8091"
     dram_size: int = 16  # GB
     model_cache_dir: str = "~/.cache/gswarm/models"
@@ -31,6 +33,7 @@ class ClientConfig:
 @dataclass
 class GSwarmConfig:
     """Combined gswarm configuration"""
+
     host: HostConfig
     client: ClientConfig
 
@@ -47,39 +50,39 @@ def get_config_path() -> Path:
 def load_config() -> GSwarmConfig:
     """Load configuration from YAML file or create default"""
     config_path = get_config_path()
-    
+
     if config_path.exists():
         try:
-            with open(config_path, 'r') as f:
+            with open(config_path, "r") as f:
                 data = yaml.safe_load(f) or {}
-            
+
             # Load host config
-            host_data = data.get('host', {})
+            host_data = data.get("host", {})
             host_config = HostConfig(
-                huggingface_cache_dir=host_data.get('huggingface_cache_dir', "~/.cache/huggingface"),
-                model_cache_dir=host_data.get('model_cache_dir', "~/.cache/gswarm/models"),
-                model_manager_port=host_data.get('model_manager_port', 8101),
-                gswarm_grpc_port=host_data.get('gswarm_grpc_port', 8091),
-                gswarm_http_port=host_data.get('gswarm_http_port', 8090)
+                huggingface_cache_dir=host_data.get("huggingface_cache_dir", "~/.cache/huggingface"),
+                model_cache_dir=host_data.get("model_cache_dir", "~/.cache/gswarm/models"),
+                model_manager_port=host_data.get("model_manager_port", 8101),
+                gswarm_grpc_port=host_data.get("gswarm_grpc_port", 8091),
+                gswarm_http_port=host_data.get("gswarm_http_port", 8090),
             )
-            
+
             # Load client config
-            client_data = data.get('client', {})
+            client_data = data.get("client", {})
             client_config = ClientConfig(
-                host_url=client_data.get('host_url', "0.0.0.0:8091"),
-                dram_size=client_data.get('dram_size', 16),
-                model_cache_dir=client_data.get('model_cache_dir', "~/.cache/gswarm/models"),
-                node_id=client_data.get('node_id', "node1")
+                host_url=client_data.get("host_url", "0.0.0.0:8091"),
+                dram_size=client_data.get("dram_size", 16),
+                model_cache_dir=client_data.get("model_cache_dir", "~/.cache/gswarm/models"),
+                node_id=client_data.get("node_id", "node1"),
             )
-            
+
             config = GSwarmConfig(host=host_config, client=client_config)
             logger.info(f"Configuration loaded from {config_path}")
             return config
-            
+
         except Exception as e:
             logger.warning(f"Error loading config file {config_path}: {e}")
             logger.info("Using default configuration")
-    
+
     # Create default config
     config = GSwarmConfig()
     save_config(config)
@@ -89,30 +92,30 @@ def load_config() -> GSwarmConfig:
 def save_config(config: GSwarmConfig) -> bool:
     """Save configuration to YAML file"""
     config_path = get_config_path()
-    
+
     try:
         data = {
-            'host': {
-                'huggingface_cache_dir': config.host.huggingface_cache_dir,
-                'model_cache_dir': config.host.model_cache_dir,
-                'model_manager_port': config.host.model_manager_port,
-                'gswarm_grpc_port': config.host.gswarm_grpc_port,
-                'gswarm_http_port': config.host.gswarm_http_port
+            "host": {
+                "huggingface_cache_dir": config.host.huggingface_cache_dir,
+                "model_cache_dir": config.host.model_cache_dir,
+                "model_manager_port": config.host.model_manager_port,
+                "gswarm_grpc_port": config.host.gswarm_grpc_port,
+                "gswarm_http_port": config.host.gswarm_http_port,
             },
-            'client': {
-                'host_url': config.client.host_url,
-                'dram_size': config.client.dram_size,
-                'model_cache_dir': config.client.model_cache_dir,
-                'node_id': config.client.node_id
-            }
+            "client": {
+                "host_url": config.client.host_url,
+                "dram_size": config.client.dram_size,
+                "model_cache_dir": config.client.model_cache_dir,
+                "node_id": config.client.node_id,
+            },
         }
-        
-        with open(config_path, 'w') as f:
+
+        with open(config_path, "w") as f:
             yaml.dump(data, f, default_flow_style=False, indent=2)
-        
+
         logger.info(f"Configuration saved to {config_path}")
         return True
-        
+
     except Exception as e:
         logger.error(f"Error saving config: {e}")
         return False
@@ -122,7 +125,7 @@ def get_model_cache_dir(config: Optional[GSwarmConfig] = None) -> Path:
     """Get the model cache directory path"""
     if config is None:
         config = load_config()
-    
+
     path = Path(config.host.model_cache_dir).expanduser()
     path.mkdir(parents=True, exist_ok=True)
     return path
@@ -139,6 +142,6 @@ def get_huggingface_cache_dir(config: Optional[GSwarmConfig] = None) -> Path:
     """Get HuggingFace cache directory for scanning existing models"""
     if config is None:
         config = load_config()
-    
+
     path = Path(config.host.huggingface_cache_dir).expanduser()
-    return path 
+    return path

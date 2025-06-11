@@ -215,7 +215,7 @@ def dict_to_grpc_metrics_update(hostname: str, payload: Dict[str, Any]) -> profi
 
 async def run_client_node(head_address: str, enable_bandwidth: bool):
     hostname = platform.node()
-    
+
     # These will be set from host config
     freq_ms = 200  # Default
     use_adaptive = False
@@ -262,21 +262,23 @@ async def run_client_node(head_address: str, enable_bandwidth: bool):
 
                 logger.info(f"Connected to head node: {connect_response.message}")
                 retry_delay = 5  # Reset retry delay on successful connection
-                
+
                 # Get configuration from host
                 try:
                     status = await stub.GetStatus(profiler_pb2.Empty())
                     freq_ms = status.freq if status.freq > 0 else 0
-                    use_adaptive = (status.freq == 0)
+                    use_adaptive = status.freq == 0
                     enable_bandwidth = status.enable_bandwidth_profiling
-                    
+
                     if use_adaptive:
                         adaptive_sampler = AdaptiveSampler()
                         logger.info("Using adaptive sampling strategy (configured by host)")
                     else:
                         logger.info(f"Using fixed frequency sampling: {freq_ms}ms (configured by host)")
-                    
-                    logger.info(f"Bandwidth profiling: {'enabled' if enable_bandwidth else 'disabled'} (configured by host)")
+
+                    logger.info(
+                        f"Bandwidth profiling: {'enabled' if enable_bandwidth else 'disabled'} (configured by host)"
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to get host config: {e}. Using defaults.")
 
@@ -285,11 +287,11 @@ async def run_client_node(head_address: str, enable_bandwidth: bool):
                     while True:
                         try:
                             metrics_payload = await collect_gpu_metrics(enable_bandwidth)
-                            
+
                             if use_adaptive:
                                 # Check if we should sample based on adaptive strategy
                                 should_sample = False
-                                
+
                                 # Check GPU utilization changes
                                 for gpu in metrics_payload.get("gpus_metrics", []):
                                     if await adaptive_sampler.should_sample("gpu_util", gpu["gpu_util"]):
@@ -298,7 +300,7 @@ async def run_client_node(head_address: str, enable_bandwidth: bool):
                                     if await adaptive_sampler.should_sample("memory", gpu["mem_util"]):
                                         should_sample = True
                                         adaptive_sampler.update_metric("memory", gpu["mem_util"])
-                                
+
                                 # Check bandwidth changes if enabled
                                 if enable_bandwidth:
                                     for gpu in metrics_payload.get("gpus_metrics", []):
@@ -306,18 +308,18 @@ async def run_client_node(head_address: str, enable_bandwidth: bool):
                                         if await adaptive_sampler.should_sample("bandwidth", total_bw):
                                             should_sample = True
                                             adaptive_sampler.update_metric("bandwidth", total_bw)
-                                
+
                                 # Check system metrics
                                 system_metrics = metrics_payload.get("system_metrics", {})
                                 if await adaptive_sampler.should_sample("system", system_metrics.get("dram_util", 0)):
                                     should_sample = True
                                     adaptive_sampler.update_metric("system", system_metrics.get("dram_util", 0))
-                                
+
                                 if should_sample:
                                     grpc_update = dict_to_grpc_metrics_update(hostname, metrics_payload)
                                     grpc_update.timestamp = time.time()
                                     yield grpc_update
-                                
+
                                 await asyncio.sleep(0.2)  # Minimum 200ms interval
                             else:
                                 # Fixed frequency sampling
@@ -325,7 +327,7 @@ async def run_client_node(head_address: str, enable_bandwidth: bool):
                                 grpc_update.timestamp = time.time()
                                 yield grpc_update
                                 await asyncio.sleep(freq_ms / 1000.0)
-                                
+
                         except Exception as e:
                             logger.error(f"Error in metrics generator: {e}")
                             break

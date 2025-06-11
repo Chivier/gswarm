@@ -4,6 +4,7 @@ import tempfile
 from loguru import logger
 import time
 
+
 def get_pid_file(component: str = "client") -> str:
     """
     Get PID file path based on whether it's a host or client.
@@ -15,6 +16,7 @@ def get_pid_file(component: str = "client") -> str:
     """
     return os.path.join(tempfile.gettempdir(), f"gswarm_{component}.pid")
 
+
 def check_pid_file_exists(pid_file_path: str) -> bool:
     """
     Check if the PID file exists.
@@ -23,8 +25,8 @@ def check_pid_file_exists(pid_file_path: str) -> bool:
     """
     return os.path.exists(pid_file_path)
 
-def daemonize(pid_file_path: str = None):
 
+def daemonize(pid_file_path: str = None):
     try:
         pid = os.fork()
         if pid > 0:
@@ -52,19 +54,21 @@ def daemonize(pid_file_path: str = None):
         pid_file_path = get_pid_file()
 
     # create log file path
-    pid_file_name = os.path.basename(pid_file_path).replace('.pid', '')
+    pid_file_name = os.path.basename(pid_file_path).replace(".pid", "")
     timestamp = int(time.time())
     log_file_path = f"/tmp/{pid_file_name}_{timestamp}.log"
 
     sys.stdout.flush()
     sys.stderr.flush()
-    with open('/dev/null', 'rb', 0) as f:
+    with open("/dev/null", "rb", 0) as f:
         os.dup2(f.fileno(), sys.stdin.fileno())
-    with open(log_file_path, 'ab', 0) as f:
+    with open(log_file_path, "ab", 0) as f:
         os.dup2(f.fileno(), sys.stdout.fileno())
-    with open(log_file_path, 'ab', 0) as f:
+    with open(log_file_path, "ab", 0) as f:
         os.dup2(f.fileno(), sys.stderr.fileno())
 
-    with open(pid_file_path, 'w') as f:
+    with open(pid_file_path, "w") as f:
         f.write(str(os.getpid()))
-    logger.info(f"Daemon started with PID {os.getpid()}, PID file created at {pid_file_path}, logs redirected to {log_file_path}")
+    logger.info(
+        f"Daemon started with PID {os.getpid()}, PID file created at {pid_file_path}, logs redirected to {log_file_path}"
+    )
