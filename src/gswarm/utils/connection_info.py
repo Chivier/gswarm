@@ -145,9 +145,11 @@ def get_connection_info() -> Optional[ConnectionInfo]:
     """Get current connection information"""
     return connection_manager.load_connection()
 
+
 def get_connection_file() -> str:
     """Get connection file path"""
     return connection_manager.connection_file
+
 
 def clear_connection_info():
     """Clear connection information"""

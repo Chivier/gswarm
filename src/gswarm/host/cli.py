@@ -1,5 +1,6 @@
 """Host node CLI commands"""
 
+from ..utils.connection_info import save_host_connection
 import typer
 from typing import Optional
 from loguru import logger
@@ -11,7 +12,6 @@ import os
 import requests
 import grpc
 from pathlib import Path
-from ..utils.connection_info import save_host_connection
 
 app = typer.Typer(help="Host node management commands")
 

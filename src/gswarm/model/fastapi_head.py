@@ -106,7 +106,7 @@ class HeadState:
         self.discovery_completed = False
 
     async def discover_and_register_models(self):
-        """Discover and register existing models on startup"""
+        """Discover and register existing models on startup with path validation"""
         try:
             logger.info("Discovering existing models...")
             discovered_models = scan_all_models()
@@ -118,28 +118,48 @@ class HeadState:
                 if model_name in self.models:
                     continue
 
-                # Create model instance
+                # Create model instance with REGISTERED status initially
                 model = ModelInstance(
                     model_name=model_name,
                     type=model_info["model_type"],
                     size=model_info["size"],
                     metadata={"source": model_info["source"], "discovered_at_startup": True},
-                    status=ModelStatus.READY,
+                    status=ModelStatus.REGISTERED,
                 )
 
-                # Add checkpoint location
+                # Add checkpoint location and validate
+                checkpoint_path = None
                 if model_info["source"] == "gswarm_cache":
-                    model.checkpoints["disk"] = model_info["local_path"]
+                    checkpoint_path = model_info["local_path"]
                 elif model_info["source"] == "huggingface_cache":
                     # Copy HF model to gswarm cache if not already there
                     gswarm_path = get_model_cache_dir() / model_name.replace("/", "--")
                     if not gswarm_path.exists():
                         logger.info(f"Copying HF model {model_name} to gswarm cache...")
-                        shutil.copytree(model_info["local_path"], gswarm_path)
-                    model.checkpoints["disk"] = str(gswarm_path)
+                        try:
+                            shutil.copytree(model_info["local_path"], gswarm_path)
+                            checkpoint_path = str(gswarm_path)
+                        except Exception as e:
+                            logger.error(f"Failed to copy HF model {model_name}: {e}")
+                            continue
+                    else:
+                        checkpoint_path = str(gswarm_path)
+
+                # Validate the checkpoint path before adding
+                if checkpoint_path and validate_model_path(checkpoint_path):
+                    model.checkpoints["disk"] = checkpoint_path
+                    model.status = ModelStatus.READY
+                    status_msg = "✓ READY (valid path)"
+                else:
+                    if checkpoint_path:
+                        logger.warning(f"Invalid path for {model_name}: {checkpoint_path}")
+                        model.status = ModelStatus.ERROR
+                        status_msg = "✗ ERROR (invalid path)"
+                    else:
+                        status_msg = "⚠ REGISTERED (no path found)"
 
                 self.models[model_name] = model
-                logger.info(f"Auto-registered model: {model_name}")
+                logger.info(f"Auto-registered model: {model_name} - {status_msg}")
 
             logger.info(f"Discovered and registered {len(discovered_models)} models")
 
@@ -221,6 +241,86 @@ def infer_copy_method(source: str, target: str) -> CopyMethod:
     return method
 
 
+def validate_model_path(path: str) -> bool:
+    """Validate that a model path exists and contains valid model files"""
+    try:
+        model_path = Path(path)
+        if not model_path.exists():
+            return False
+
+        # Check if it's a directory with model files or a single model file
+        if model_path.is_dir():
+            # Check for common model files
+            has_model_files = any(
+                (model_path / filename).exists()
+                for filename in [
+                    "config.json",
+                    "pytorch_model.bin",
+                    "model.safetensors",
+                    "pytorch_model-00001-of-*.bin",
+                    "model-00001-of-*.safetensors",
+                ]
+            )
+            # Also check for any .bin or .safetensors files
+            has_weight_files = any(model_path.glob("*.bin") or model_path.glob("*.safetensors"))
+            return has_model_files or has_weight_files
+        else:
+            # Single file - check if it's a model file
+            return model_path.suffix in [".bin", ".safetensors", ".pt", ".pth"]
+    except Exception as e:
+        logger.error(f"Error validating model path {path}: {e}")
+        return False
+
+
+def validate_model_checkpoints(model: ModelInstance) -> bool:
+    """Validate all checkpoints for a model and remove invalid ones"""
+    valid_checkpoints = {}
+    has_valid_checkpoint = False
+
+    for device, path in model.checkpoints.items():
+        if validate_model_path(path):
+            valid_checkpoints[device] = path
+            has_valid_checkpoint = True
+            logger.debug(f"✓ Valid checkpoint for {model.model_name} on {device}: {path}")
+        else:
+            logger.warning(f"✗ Invalid checkpoint for {model.model_name} on {device}: {path}")
+
+    # Update model checkpoints to only include valid ones
+    model.checkpoints = valid_checkpoints
+    return has_valid_checkpoint
+
+
+def update_model_status_based_on_checkpoints(model: ModelInstance) -> None:
+    """Update model status based on available valid checkpoints"""
+    if not model.checkpoints:
+        # No valid checkpoints
+        if model.status in [ModelStatus.READY, ModelStatus.SERVING]:
+            model.status = ModelStatus.REGISTERED
+            logger.info(f"Model {model.model_name} status changed to REGISTERED (no valid checkpoints)")
+    else:
+        # Has valid checkpoints
+        if len(model.serving_instances) > 0:
+            model.status = ModelStatus.SERVING
+        elif model.status in [ModelStatus.REGISTERED, ModelStatus.ERROR]:
+            model.status = ModelStatus.READY
+            logger.info(f"Model {model.model_name} status changed to READY (valid checkpoints found)")
+
+
+def discover_model_cache_path(model_name: str) -> Optional[str]:
+    """Discover the actual cache path for a model by checking common locations"""
+    # Check gswarm cache
+    gswarm_path = get_model_cache_dir() / model_name.replace("/", "--")
+    if validate_model_path(str(gswarm_path)):
+        return str(gswarm_path)
+
+    # Check DRAM cache
+    dram_path = get_dram_cache_dir() / model_name.replace("/", "--")
+    if validate_model_path(str(dram_path)):
+        return str(dram_path)
+
+    return None
+
+
 # Basic endpoints
 
 
@@ -262,6 +362,9 @@ async def list_models():
         # Check if model is in DRAM
         dram_loaded = model.model_name in model_storage.list_dram_models()
 
+        # Check if all paths are valid
+        paths_validated = all(validate_model_path(path) for path in model.checkpoints.values())
+
         models_info.append(
             {
                 "name": model.model_name,
@@ -273,6 +376,8 @@ async def list_models():
                 "dram_loaded": dram_loaded,
                 "metadata": model.metadata,
                 "created_at": model.created_at.isoformat(),
+                "paths_validated": paths_validated,
+                "has_valid_cache": len(model.checkpoints) > 0 and paths_validated,
             }
         )
 
@@ -319,16 +424,38 @@ async def get_model(model_name: str):
 
 @app.post("/models")
 async def register_model(request: RegisterModelRequest):
-    """Register a new model"""
+    """Register a new model with path validation"""
     if request.name in state.models:
         return StandardResponse(success=False, message=f"Model {request.name} already exists")
 
+    # Create model with REGISTERED status initially
     model = ModelInstance(model_name=request.name, type=request.type, metadata=request.metadata)
+
+    # Try to discover existing cache path for this model
+    discovered_path = discover_model_cache_path(request.name)
+    status_info = {"status": "registered"}
+
+    if discovered_path:
+        model.checkpoints["disk"] = discovered_path
+        model.status = ModelStatus.READY
+        status_info.update(
+            {
+                "status": "ready",
+                "discovered_path": discovered_path,
+                "message": "Model found in cache and marked as ready",
+            }
+        )
+        logger.info(f"Registered model {request.name} with discovered path: {discovered_path}")
+    else:
+        logger.info(f"Registered model {request.name} without valid cache path - use download to make it ready")
+        status_info["message"] = "Model registered but no valid cache found - download required"
+
     state.models[request.name] = model
 
-    logger.info(f"Registered model: {request.name}")
     return StandardResponse(
-        success=True, message=f"Model {request.name} registered successfully", data={"instance_id": model.instance_id}
+        success=True,
+        message=f"Model {request.name} registered successfully",
+        data={"instance_id": model.instance_id, **status_info},
     )
 
 
@@ -379,15 +506,20 @@ async def perform_download(model_name: str, source_url: str, target_device: str)
         else:
             await download_from_url(model_name, source_url, storage_path)
 
-        # Update model status
-        model.status = ModelStatus.READY
-        model.checkpoints[target_device] = str(storage_path)
+        # Validate the downloaded path before marking as ready
+        if validate_model_path(str(storage_path)):
+            model.status = ModelStatus.READY
+            model.checkpoints[target_device] = str(storage_path)
 
-        # If downloaded to DRAM, also load the model variable
-        if target_device == "dram":
-            load_safetensors_to_dram(storage_path, model_name)
+            # If downloaded to DRAM, also load the model variable
+            if target_device == "dram":
+                load_safetensors_to_dram(storage_path, model_name)
 
-        logger.info(f"✅ Download completed: {model_name} -> {target_device}")
+            logger.info(f"✅ Download completed and validated: {model_name} -> {target_device}")
+        else:
+            model.status = ModelStatus.ERROR
+            logger.error(f"❌ Download completed but path validation failed: {model_name} -> {storage_path}")
+            raise Exception(f"Downloaded model path validation failed: {storage_path}")
 
     except Exception as e:
         model.status = ModelStatus.ERROR
@@ -553,24 +685,30 @@ async def perform_copy(request: CopyRequest):
             logger.info(f"Copying {request.model_name} from {request.source_device} to {request.target_device}...")
             shutil.copytree(source_path, target_path, dirs_exist_ok=True)
 
-        # Update model checkpoints
-        model.checkpoints[request.target_device] = str(target_path)
+        # Validate the target path before updating checkpoints
+        if validate_model_path(str(target_path)):
+            model.checkpoints[request.target_device] = str(target_path)
 
-        # Remove source if requested
-        if not request.keep_source:
-            if request.source_device == "dram":
-                # Remove from DRAM variable storage
-                model_storage.remove_dram_model(request.model_name)
+            # Remove source if requested
+            if not request.keep_source:
+                if request.source_device == "dram":
+                    # Remove from DRAM variable storage
+                    model_storage.remove_dram_model(request.model_name)
 
-            # Remove filesystem path
-            if request.source_device in model.checkpoints:
-                source_path = Path(model.checkpoints[request.source_device])
-                if source_path.exists():
-                    shutil.rmtree(source_path)
-                del model.checkpoints[request.source_device]
+                # Remove filesystem path
+                if request.source_device in model.checkpoints:
+                    source_path = Path(model.checkpoints[request.source_device])
+                    if source_path.exists():
+                        shutil.rmtree(source_path)
+                    del model.checkpoints[request.source_device]
 
-        model.status = ModelStatus.READY
-        logger.info(f"✅ Copy completed: {request.model_name} to {request.target_device}")
+            # Update status based on remaining valid checkpoints
+            update_model_status_based_on_checkpoints(model)
+            logger.info(f"✅ Copy completed and validated: {request.model_name} to {request.target_device}")
+        else:
+            model.status = ModelStatus.ERROR
+            logger.error(f"❌ Copy completed but target path validation failed: {request.model_name} -> {target_path}")
+            raise Exception(f"Copy target path validation failed: {target_path}")
 
     except Exception as e:
         model.status = ModelStatus.ERROR
@@ -766,7 +904,8 @@ async def stop_serving(request: StopServeRequest):
 
     # Update model status if no more instances
     if len(model.serving_instances) == 0:
-        model.status = ModelStatus.READY
+        # Validate checkpoints before setting to READY
+        update_model_status_based_on_checkpoints(model)
 
     logger.info(f"Stopped serving instance {request.instance_id} for {request.model_name}")
 
@@ -942,6 +1081,87 @@ async def discover_models():
     except Exception as e:
         logger.error(f"Model discovery failed: {e}")
         raise HTTPException(status_code=500, detail=f"Model discovery failed: {str(e)}")
+
+
+@app.post("/models/validate")
+async def validate_all_models():
+    """Validate all registered models and update their statuses based on cache paths"""
+    validated_models = []
+
+    for model_name, model in state.models.items():
+        logger.info(f"Validating model: {model_name}")
+
+        # Validate existing checkpoints
+        had_valid_checkpoints = validate_model_checkpoints(model)
+
+        # Try to discover additional paths if no valid checkpoints
+        if not had_valid_checkpoints:
+            discovered_path = discover_model_cache_path(model_name)
+            if discovered_path:
+                model.checkpoints["disk"] = discovered_path
+                had_valid_checkpoints = True
+                logger.info(f"Discovered path for {model_name}: {discovered_path}")
+
+        # Update status based on validation
+        old_status = model.status
+        update_model_status_based_on_checkpoints(model)
+
+        validated_models.append(
+            {
+                "model_name": model_name,
+                "old_status": old_status,
+                "new_status": model.status,
+                "valid_checkpoints": list(model.checkpoints.keys()),
+                "checkpoint_paths": model.checkpoints,
+            }
+        )
+
+    ready_count = sum(1 for m in state.models.values() if m.status == ModelStatus.READY)
+    registered_count = sum(1 for m in state.models.values() if m.status == ModelStatus.REGISTERED)
+
+    return StandardResponse(
+        success=True,
+        message="Model validation completed",
+        data={
+            "total_models": len(state.models),
+            "ready_models": ready_count,
+            "registered_models": registered_count,
+            "validated_models": validated_models,
+        },
+    )
+
+
+@app.get("/models/{model_name}/validate")
+async def validate_single_model(model_name: str):
+    """Validate a specific model and update its status"""
+    if model_name not in state.models:
+        raise HTTPException(status_code=404, detail=f"Model {model_name} not found")
+
+    model = state.models[model_name]
+    old_status = model.status
+    old_checkpoints = dict(model.checkpoints)
+
+    # Validate existing checkpoints
+    had_valid_checkpoints = validate_model_checkpoints(model)
+
+    # Try to discover additional paths if no valid checkpoints
+    if not had_valid_checkpoints:
+        discovered_path = discover_model_cache_path(model_name)
+        if discovered_path:
+            model.checkpoints["disk"] = discovered_path
+            had_valid_checkpoints = True
+
+    # Update status based on validation
+    update_model_status_based_on_checkpoints(model)
+
+    return {
+        "model_name": model_name,
+        "old_status": old_status,
+        "new_status": model.status,
+        "old_checkpoints": old_checkpoints,
+        "new_checkpoints": model.checkpoints,
+        "validation_successful": had_valid_checkpoints,
+    }
 
 
 # Helper functions for monitoring

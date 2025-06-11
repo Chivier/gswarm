@@ -350,6 +350,42 @@ class ModelClient:
             logger.error(f"Failed to get download status: {e}")
             return None
 
+    def validate_model(self, model_name: str) -> Optional[Dict]:
+        """Validate a specific model and get updated status"""
+        try:
+            response = self.session.get(f"{self.head_url}/models/{model_name}/validate")
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Failed to validate model: {e}")
+            return None
+
+    def validate_all_models(self) -> Optional[Dict]:
+        """Validate all models and get updated statuses"""
+        try:
+            response = self.session.post(f"{self.head_url}/models/validate")
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Failed to validate all models: {e}")
+            return None
+
+    def is_model_ready(self, model_name: str) -> bool:
+        """Check if a model is ready with valid cache paths"""
+        try:
+            model_details = self.get_model_details(model_name)
+            if not model_details:
+                return False
+
+            status = model_details.get("status", "")
+            checkpoints = model_details.get("checkpoints", {})
+
+            # Model is ready if status is 'ready' and has at least one valid checkpoint
+            return status == "ready" and len(checkpoints) > 0
+        except Exception as e:
+            logger.error(f"Failed to check if model is ready: {e}")
+            return False
+
     def _discover_and_register_local_models(self) -> None:
         """Discover and register locally cached models"""
         try:
@@ -380,6 +416,12 @@ class ModelClient:
 
                     if success:
                         logger.info(f"✓ Registered cached model: {model_info['model_name']} (instance: {instance_id})")
+                        # Validate that the model is properly registered with a valid path
+                        model_details = self.get_model_details(model_info["model_name"])
+                        if model_details and model_details.get("status") == "ready":
+                            logger.info(f"✓ Model {model_info['model_name']} confirmed ready with valid path")
+                        elif model_details and model_details.get("status") == "registered":
+                            logger.warning(f"⚠ Model {model_info['model_name']} registered but no valid path found")
                     else:
                         logger.warning(f"✗ Failed to register: {model_info['model_name']}")
 

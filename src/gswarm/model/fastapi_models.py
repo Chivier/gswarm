@@ -90,6 +90,7 @@ class ModelInfo(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
     status: str = "registered"
     download_progress: Optional[Dict[str, Any]] = None
+    path_validated: Optional[bool] = Field(None, description="Whether the model paths have been validated")
 
 
 class NodeInfo(BaseModel):

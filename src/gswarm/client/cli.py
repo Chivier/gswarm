@@ -7,7 +7,7 @@ import sys
 import platform
 from typing import Optional
 from loguru import logger
-from ..utils.connection_info import get_connection_file,save_host_connection, clear_connection_info
+from ..utils.connection_info import get_connection_file, save_host_connection, clear_connection_info
 from ..utils.daemonizer import daemonize, get_pid_file, check_pid_file_exists
 
 app = typer.Typer(help="Client node management commands")
