@@ -8,6 +8,7 @@ import platform
 from typing import Optional
 from loguru import logger
 from ..utils.connection_info import save_host_connection, clear_connection_info
+from ..utils.daemonizer import daemonize, get_pid_file, check_pid_file_exists
 
 app = typer.Typer(help="Client node management commands")
 
@@ -37,7 +38,7 @@ class ClientState:
 # Global state instance
 client_state = ClientState()
 
-def run_client_in_thread(host_address: str, resilient: bool, enable_bandwidth: bool):
+def create_runner(host_address: str, resilient: bool, enable_bandwidth: bool):
     """Run client in a separate thread with proper signal handling"""
     def client_runner():
         try:
@@ -64,12 +65,23 @@ def connect(
     resilient: bool = typer.Option(False, "--resilient", "-r", help="Enable resilient mode with auto-reconnect"),
     enable_bandwidth: bool = typer.Option(None, "--enable-bandwidth", help="Enable bandwidth profiling (can be overridden by host)"),
     node_id: Optional[str] = typer.Option(None, "--node-id", "-n", help="Custom node ID"),
+    block: bool = typer.Option(False, "--block", "-b", help="Block until client is started (default: False)")
 ):
     """Connect this node as a client to the host"""
     
     # Check if already connected
     if client_state.is_connected:
         logger.warning(f"Already connected to {client_state.host_address}. Use 'disconnect' first.")
+        return
+    
+    pid_file_path = get_pid_file(component="client")
+    if check_pid_file_exists(pid_file_path):
+        logger.warning(f"Client PID file already exists at {pid_file_path}. Use 'disconnect' first.")
+        with open(pid_file_path, 'r') as f:
+            existing_pid = f.read().strip()
+        logger.warning(f"Existing client PID: {existing_pid}")
+        logger.warning("If you are sure the client is not running, delete the PID file and try again.")
+        logger.warning(f"You can find it at: {pid_file_path}")
         return
     
     logger.info(f"Connecting to host at {host_address}")
@@ -104,6 +116,10 @@ def connect(
     client_state.resilient_mode = resilient
     client_state.enable_bandwidth = enable_bandwidth
     
+    if not block:
+        logger.info("Running in non-blocking mode, client will run in background, please find logs in /tmp/gswarm_client_xxxx.log")
+        daemonize()
+
     # Start model client (optional)
     from ..model.fastapi_client import ModelClient
     try:
@@ -121,62 +137,60 @@ def connect(
         logger.debug(f"Model service not available (this is optional): {e}")
     
     # Start profiler client in a separate thread
-    client_runner = run_client_in_thread(host_address, resilient, enable_bandwidth)
+    client_runner = create_runner(host_address, resilient, enable_bandwidth)
     client_state.client_thread = threading.Thread(target=client_runner, daemon=True)
     client_state.client_thread.start()
     client_state.is_connected = True
     
     logger.info("Client started successfully. Use 'gswarm client status' to check connection.")
     logger.info("Use 'gswarm client disconnect' to stop the client.")
-
-    client_state.client_thread.join()  # Maintain the main thread until client thread exits
-
+    
+    
+    client_state.client_thread.join()
+    
 @app.command()
 def disconnect():
     """Disconnect from the host"""
-    if not client_state.is_connected:
-        logger.info("No active connection to disconnect")
+
+    pid_file_path = get_pid_file(component="client")
+    if not check_pid_file_exists(pid_file_path):
+        logger.warning(f"No PID file found at {pid_file_path}. Cannot disconnect.")
         return
     
+    with open(pid_file_path, 'r') as f:
+        client_pid = int(f.read().strip())
+    
+    logger.info(f"Disconnecting client with PID {client_pid}...")
     logger.info(f"Disconnecting from host at {client_state.host_address}...")
     
     # Clear connection info
     clear_connection_info()
-    
+
     try:
-        # Signal shutdown
-        client_state.shutdown_event.set()
-        
-        # If we have a model client, try to unregister
-        if client_state.model_client:
-            try:
-                # Note: The current ModelClient doesn't have an unregister method,
-                # but we can at least clear our reference
-                logger.info("Clearing model service registration")
-                client_state.model_client = None
-            except Exception as e:
-                logger.debug(f"Error during model service cleanup: {e}")
-        
-        # The profiler clients handle KeyboardInterrupt for graceful shutdown
-        # Send SIGINT to the current process if the client thread is running
-        if client_state.client_thread and client_state.client_thread.is_alive():
-            logger.info("Sending shutdown signal to client...")
-            # The client implementations handle KeyboardInterrupt properly
-            import os
-            os.kill(os.getpid(), signal.SIGINT)
-        
-        # Wait a moment for graceful shutdown
-        if client_state.client_thread:
-            client_state.client_thread.join(timeout=5.0)
-            if client_state.client_thread.is_alive():
-                logger.warning("Client thread did not shutdown gracefully")
-    
+        # Kill the client process if it exists
+        import os
+        if os.path.exists(pid_file_path):
+            os.remove(pid_file_path)
+            logger.info(f"Removed PID file at {pid_file_path}")
+        else:
+            logger.warning(f"PID file {pid_file_path} does not exist, nothing to remove")
+
+        if client_pid and os.path.exists(f"/proc/{client_pid}"):
+            logger.info(f"Killing client process with PID {client_pid}...")
+            os.kill(client_pid, signal.SIGTERM)
     except Exception as e:
-        logger.error(f"Error during disconnect: {e}")
-    finally:
-        # Reset state
-        client_state.reset()
-        logger.info("Disconnected successfully")
+        logger.error(f"Error while trying to kill client process: {e}")
+        return
+    logger.info("Waiting for client thread to finish...")
+    # Wait for the client thread to finish
+    import time
+    time.sleep(1)  # Give it a moment to clean up
+    if client_state.client_thread and client_state.client_thread.is_alive():
+        logger.warning("Client thread did not exit gracefully, forcing shutdown")
+        client_state.client_thread.join(timeout=5.0)
+        if client_state.client_thread.is_alive():
+            logger.error("Client thread did not shutdown properly, please check logs")
+
 
 @app.command()
 def status():
