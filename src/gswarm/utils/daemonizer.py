@@ -28,18 +28,18 @@ def daemonize(pid_file_path: str = None):
     try:
         pid = os.fork()
         if pid > 0:
-            # 退出父进程
+            # exit parent process
             sys.exit(0)
     except OSError as e:
         sys.stderr.write(f"fork #1 failed: {e}\n")
         sys.exit(1)
 
-    # 从父环境中分离
+    # detach from parent environment
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     os.setsid()
     os.umask(0)
 
-    # 第二次 fork
+    # second fork
     try:
         pid = os.fork()
         if pid > 0:
@@ -51,7 +51,7 @@ def daemonize(pid_file_path: str = None):
     if pid_file_path is None:
         pid_file_path = get_pid_file()
 
-    # 创建日志文件路径
+    # create log file path
     pid_file_name = os.path.basename(pid_file_path).replace('.pid', '')
     timestamp = int(time.time())
     log_file_path = f"/tmp/{pid_file_name}_{timestamp}.log"
