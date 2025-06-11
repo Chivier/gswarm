@@ -129,6 +129,8 @@ def connect(
     logger.info("Client started successfully. Use 'gswarm client status' to check connection.")
     logger.info("Use 'gswarm client disconnect' to stop the client.")
 
+    client_state.client_thread.join()  # Maintain the main thread until client thread exits
+
 @app.command()
 def disconnect():
     """Disconnect from the host"""
