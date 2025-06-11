@@ -7,7 +7,7 @@ import sys
 import platform
 from typing import Optional
 from loguru import logger
-from ..utils.connection_info import save_host_connection, clear_connection_info
+from ..utils.connection_info import get_connection_file,save_host_connection, clear_connection_info
 from ..utils.daemonizer import daemonize, get_pid_file, check_pid_file_exists
 
 app = typer.Typer(help="Client node management commands")
@@ -126,8 +126,9 @@ def connect(
     client_state.enable_bandwidth = enable_bandwidth
 
     if not block:
+        connection_file = get_connection_file()
         logger.info(
-            "Running in non-blocking mode, client will run in background, please find logs in /tmp/gswarm_client_xxxx.log"
+            f"Running in non-blocking mode, client will run in background, please find logs in {connection_file}"
         )
         daemonize()
 

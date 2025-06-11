@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from dataclasses import dataclass, asdict
 from datetime import datetime
+import uuid
 from loguru import logger
 import tempfile
 import atexit
@@ -38,9 +39,11 @@ class ConnectionManager:
     """Manages connection information in temporary files"""
 
     def __init__(self):
-        self.temp_dir = Path(tempfile.gettempdir()) / "gswarm"
+        uuid6 = str(uuid.uuid4())[:6]
+        self.temp_dir = Path(tempfile.gettempdir()) / f"gswarm_{uuid6}"
         self.temp_dir.mkdir(exist_ok=True)
-        self.connection_file = self.temp_dir / "connection_info.json"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.connection_file = self.temp_dir / f"connection_info_{timestamp}.json"
 
         # Register cleanup on exit
         atexit.register(self.cleanup)
@@ -142,6 +145,9 @@ def get_connection_info() -> Optional[ConnectionInfo]:
     """Get current connection information"""
     return connection_manager.load_connection()
 
+def get_connection_file() -> str:
+    """Get connection file path"""
+    return connection_manager.connection_file
 
 def clear_connection_info():
     """Clear connection information"""
