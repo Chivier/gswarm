@@ -52,7 +52,8 @@ class ActionType(str, Enum):
 class ModelStatus(str, Enum):
     REGISTERED = "registered"  # Just registered, not downloaded yet
     DOWNLOADING = "downloading"  # Currently downloading
-    READY = "ready"  # Available for use (on disk/dram)
+    DISK = "disk"  # Available on disk
+    DRAM = "dram"  # Available in DRAM
     COPYING = "copying"  # Being copied between devices
     SERVING = "serving"  # Currently serving on GPU
     ERROR = "error"  # Error state
