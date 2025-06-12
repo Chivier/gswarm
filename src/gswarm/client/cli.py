@@ -153,10 +153,12 @@ def connect(
     client_state.client_thread.join()
 
 
-@app.command()
+@app.command(deprecated=True)
 def disconnect():
     """Disconnect from the host"""
 
+    logger.warning("The 'disconnect' command is deprecated. Please wait for new commands to be implemented.")
+    
     pid_file_path = get_pid_file(component="client")
     if not check_pid_file_exists(pid_file_path):
         logger.warning(f"No PID file found at {pid_file_path}. Cannot disconnect.")
