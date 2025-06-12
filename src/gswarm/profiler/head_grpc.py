@@ -211,6 +211,7 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
         async with state.data_lock:
             state.is_profiling = False
 
+        # FIXME: Following code never runs
         logger.info("Starting Cleanup...")
         await profiler_stop_cleanup(state)
 

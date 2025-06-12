@@ -17,6 +17,7 @@ def get_pid_file(component: str = "client") -> str:
     """
     return os.path.join(tempfile.gettempdir(), f"gswarm_{component}.pid")
 
+
 def get_log_filepath(component: str = "client") -> str:
     if not os.path.exists("/tmp/gswarm"):
         os.makedirs("/tmp/gswarm")
@@ -60,9 +61,6 @@ def daemonize(log_file_path: str = None):
         sys.stderr.write(f"fork #2 failed: {e}\n")
         sys.exit(1)
 
-
-
-
     sys.stdout.flush()
     sys.stderr.flush()
     with open("/dev/null", "rb", 0) as f:
@@ -72,6 +70,4 @@ def daemonize(log_file_path: str = None):
     with open(log_file_path, "ab", 0) as f:
         os.dup2(f.fileno(), sys.stderr.fileno())
 
-    logger.info(
-        f"Daemon started with PID {os.getpid()}, logs redirected to {log_file_path}"
-    )
+    logger.info(f"Daemon started with PID {os.getpid()}, logs redirected to {log_file_path}")
