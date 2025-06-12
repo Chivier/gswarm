@@ -83,7 +83,6 @@ def connect(
         logger.warning(f"Already connected to {client_state.host_address}. Use 'disconnect' first.")
         return
 
-
     logger.info(f"Connecting to host at {host_address}")
     logger.info(f"  Resilient mode: {'enabled' if resilient else 'disabled'}")
     if enable_bandwidth is not None:
@@ -158,7 +157,7 @@ def disconnect():
     """Disconnect from the host"""
 
     logger.warning("The 'disconnect' command is deprecated. Please wait for new commands to be implemented.")
-    
+
     pid_file_path = get_pid_file(component="client")
     if not check_pid_file_exists(pid_file_path):
         logger.warning(f"No PID file found at {pid_file_path}. Cannot disconnect.")

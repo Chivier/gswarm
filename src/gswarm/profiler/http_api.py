@@ -5,9 +5,13 @@ import asyncio
 import uvicorn
 from loguru import logger
 from datetime import datetime
+import aiofiles
+import json
 
 # Import the head module's state
 from gswarm.profiler.head import state, HeadNodeState
+from .utils import draw_metrics
+from gswarm.profiler.head_common import profiler_stop_cleanup
 
 app = FastAPI(
     title="GSwarm Profiler HTTP API", description="HTTP API for GSwarm Profiler control panel", version="0.1.0"
@@ -36,6 +40,18 @@ class StatusResponse(BaseModel):
     connected_clients: List[str]
     total_gpus: int
     gpu_info: Dict[str, List[Dict[str, Any]]]
+
+
+class TimeConsumptionRequest(BaseModel):
+    app_name: str
+    queue_time: float
+    processing_time: float
+    other_time: Optional[Dict[str, float]] = None
+
+
+class TimeConsumptionResponse(BaseModel):
+    success: bool
+    message: str
 
 
 @app.get("/")
@@ -120,14 +136,8 @@ async def stop_profiling():
         async with state.data_lock:
             state.is_profiling = False
 
-        if state.profiling_task:
-            try:
-                await asyncio.wait_for(state.profiling_task, timeout=5.0)
-            except asyncio.TimeoutError:
-                logger.warning("Profiling task did not finish in time. Data might be incomplete for the last frame.")
-                state.profiling_task.cancel()
-            except Exception as e:
-                logger.error(f"Error during profiling task shutdown: {e}")
+        await profiler_stop_cleanup(state)
+        
 
         state.profiling_task = None
 
@@ -165,6 +175,41 @@ async def get_latest_metrics():
         return {"timestamp": datetime.now().isoformat(), "client_data": state.latest_client_data}
     except Exception as e:
         logger.error(f"Error getting latest metrics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/record_time", response_model=TimeConsumptionResponse)
+async def record_time_consumption(request: TimeConsumptionRequest):
+    """Record time consumption for a specific application"""
+    try:
+        if not request.app_name or request.queue_time < 0 or request.processing_time < 0:
+            raise HTTPException(status_code=400, detail="Invalid request data")
+
+        async with state.data_lock:
+            if request.app_name not in state.time_consumption_data:
+                state.time_consumption_data[request.app_name] = []
+
+            current_request_data = {
+                "queue_time": 0.0,
+                "processing_time": 0.0,
+                "other_times": {},
+            }
+            current_request_data["queue_time"] = request.queue_time
+            current_request_data["processing_time"] = request.processing_time
+
+            if request.other_time:
+                for key, value in request.other_time.items():
+                    if key not in current_request_data["other_times"]:
+                        current_request_data["other_times"][key] = 0.0
+                    current_request_data["other_times"][key] = value
+
+            state.time_consumption_data[request.app_name].append(current_request_data)
+
+        logger.info(f"Recorded time consumption for {request.app_name}.")
+
+        return TimeConsumptionResponse(success=True, message="Time consumption recorded successfully")
+    except Exception as e:
+        logger.error(f"Error recording time consumption: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

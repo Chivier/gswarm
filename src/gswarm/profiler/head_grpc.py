@@ -14,8 +14,8 @@ import nvitop
 # Import generated protobuf classes
 from gswarm.profiler import profiler_pb2
 from gswarm.profiler import profiler_pb2_grpc
-
-from gswarm.profiler.utils import draw_metrics
+from gswarm.profiler.head import collect_and_store_frame
+from gswarm.profiler.head_common import profiler_stop_cleanup
 
 
 # --- Global State for Head Node ---
@@ -211,14 +211,8 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
         async with state.data_lock:
             state.is_profiling = False
 
-        if state.profiling_task:
-            try:
-                await asyncio.wait_for(state.profiling_task, timeout=5.0)
-            except asyncio.TimeoutError:
-                logger.warning("Profiling task did not finish in time. Data might be incomplete for the last frame.")
-                state.profiling_task.cancel()
-            except Exception as e:
-                logger.error(f"Error during profiling task shutdown: {e}")
+        logger.info("Starting Cleanup...")
+        await profiler_stop_cleanup(state)
 
         state.profiling_task = None
 
@@ -242,120 +236,6 @@ def log_total_gpus():
     logger.info(f"Total GPUs connected: {total_gpus} across {len(state.client_gpu_info)} client(s).")
 
 
-async def collect_and_store_frame():
-    """Periodically collects data from clients and stores a frame if profiling is active."""
-    while state.is_profiling:
-        await asyncio.sleep(1)  # Head node frame aggregation interval
-
-        async with state.data_lock:
-            if not state.is_profiling:
-                break
-
-            state.frame_id_counter += 1
-            current_frame: Dict[str, Any] = {
-                "frame_id": state.frame_id_counter,
-                "time": datetime.datetime.now().isoformat(),
-                "gpu_id": [],
-                "gpu_util": [],
-                "gpu_memory": [],
-            }
-            if state.enable_bandwidth_profiling:
-                current_frame["dram_bandwidth"] = []
-                current_frame["dram_bandwidth_rx"] = []
-                current_frame["dram_bandwidth_tx"] = []
-                current_frame["gpu_bandwidth"] = []
-
-            active_clients_data = {k: v for k, v in state.latest_client_data.items() if k in state.connected_clients}
-
-            for client_id, client_payload in active_clients_data.items():
-                if client_id not in state.client_gpu_info or not state.client_gpu_info[client_id]:
-                    logger.warning(
-                        f"Skipping data for client {client_id} due to missing GPU info during frame collection."
-                    )
-                    continue
-                client_hostname = state.client_gpu_info[client_id][0]["hostname"]
-
-                for gpu_metric in client_payload.get("gpus_metrics", []):
-                    gpu_global_id = get_global_gpu_id(client_hostname, gpu_metric["physical_idx"], gpu_metric["name"])
-                    current_frame["gpu_id"].append(gpu_global_id)
-                    current_frame["gpu_util"].append(f"{gpu_metric['gpu_util']:.2f}")
-                    current_frame["gpu_memory"].append(f"{gpu_metric['mem_util']:.2f}")
-
-                    # Accumulate stats for overall average
-                    util_value = float(gpu_metric["gpu_util"])
-                    mem_value = float(gpu_metric["mem_util"])
-
-                    state.gpu_total_util[gpu_global_id] = state.gpu_total_util.get(gpu_global_id, 0.0) + util_value
-                    state.gpu_util_count[gpu_global_id] = state.gpu_util_count.get(gpu_global_id, 0) + 1
-                    state.gpu_total_memory[gpu_global_id] = state.gpu_total_memory.get(gpu_global_id, 0.0) + mem_value
-                    state.gpu_memory_count[gpu_global_id] = state.gpu_memory_count.get(gpu_global_id, 0) + 1
-
-                    if state.enable_bandwidth_profiling:
-                        current_frame["dram_bandwidth_rx"].append(f"{gpu_metric.get('dram_bw_gbps_rx', 0.0):.2f}")
-                        current_frame["dram_bandwidth_tx"].append(f"{gpu_metric.get('dram_bw_gbps_tx', 0.0):.2f}")
-                        current_frame["dram_bandwidth"].append(
-                            str(
-                                float(current_frame["dram_bandwidth_rx"][-1])
-                                + float(current_frame["dram_bandwidth_tx"][-1])
-                            )
-                        )
-
-                if state.enable_nvlink_profiling:
-                    for p2p_link in client_payload.get("p2p_links", []):
-                        source_gpu_global_id = get_global_gpu_id(
-                            client_hostname,
-                            p2p_link["local_gpu_physical_id"],
-                            p2p_link["local_gpu_name"],
-                        )
-                        target_gpu_global_id = get_global_gpu_id(
-                            client_hostname,
-                            p2p_link["remote_gpu_physical_id"],
-                            p2p_link["remote_gpu_name"],
-                        )
-                        id1, id2 = sorted([source_gpu_global_id, target_gpu_global_id])
-
-                        link_info = {
-                            "id1": id1,
-                            "id2": id2,
-                            "utilization": f"{p2p_link.get('aggregated_max_bandwidth_gbps', 0.0):.2f}",
-                        }
-                        if link_info not in current_frame["gpu_bandwidth"]:
-                            current_frame["gpu_bandwidth"].append(link_info)
-
-            state.profiling_data_frames.append(current_frame)
-
-    logger.info("Profiling data collection loop finished.")
-    if state.output_filename and (state.profiling_data_frames or state.gpu_total_util):
-        logger.info(f"Attempting to save data to {state.output_filename}...")
-
-        summary_by_device = {}
-        for gpu_id, total_util in state.gpu_total_util.items():
-            count = state.gpu_util_count.get(gpu_id, 0)
-            if count > 0:
-                avg_util = total_util / count
-                summary_by_device.setdefault(gpu_id, {})["avg_gpu_util"] = f"{avg_util:.2f}"
-
-        for gpu_id, total_mem in state.gpu_total_memory.items():
-            count = state.gpu_memory_count.get(gpu_id, 0)
-            if count > 0:
-                avg_mem = total_mem / count
-                summary_by_device.setdefault(gpu_id, {})["avg_gpu_memory"] = f"{avg_mem:.2f}"
-
-        output_data = {
-            "frames": state.profiling_data_frames,
-            "summary_by_device": summary_by_device,
-        }
-
-        try:
-            async with aiofiles.open(state.output_filename, mode="w") as f:
-                await f.write(json.dumps(output_data, indent=2))
-            logger.info(f"Profiling data successfully saved to {state.output_filename}")
-            draw_metrics(output_data, state.report_filename, state.report_metrics)
-
-        except Exception as e:
-            logger.error(f"Failed to save profiling data: {e}")
-    else:
-        logger.info("No profiling data to save.")
 
 
 async def run_grpc_server(host: str, port: int):

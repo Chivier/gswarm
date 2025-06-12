@@ -406,7 +406,6 @@ class ResilientClient:
         logger.info("Client shutdown complete")
 
 
-
 def create_lifespan(head_address: str, enable_bandwidth: bool) -> FastAPI:
     """Create FastAPI app with resilient client context"""
 
@@ -419,7 +418,7 @@ def create_lifespan(head_address: str, enable_bandwidth: bool) -> FastAPI:
         yield
 
         app.state.client_run_task.cancel()
-    
+
     return resilient_client_context
 
 
@@ -437,37 +436,31 @@ def create_app(head_address: str, enable_bandwidth: bool) -> FastAPI:
         # cli may cannot receive this message
         return {"message": "Client shutdown initiated"}
 
-        
     return app
 
 
 def start_resilient_client(head_address: str, enable_bandwidth: bool):
     """Launch the resilient client"""
     app = create_app(head_address, enable_bandwidth)
-    
+
     from uvicorn import Config, Server
     import socket
     # Find an available port from 10000 to 20000
-    
+
     port = None
     for candidate_port in range(10000, 20001):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                sock.bind(('0.0.0.0', candidate_port))
+                sock.bind(("0.0.0.0", candidate_port))
                 port = candidate_port
                 break
         except OSError:
             continue
-    
+
     if port is None:
         raise RuntimeError("No available port found in range 10000-20000")
-    config = Config(app, host="0.0.0.0" , port=port, log_level="info")
+    config = Config(app, host="0.0.0.0", port=port, log_level="info")
     server = Server(config)
-    
+
     logger.info(f"Starting client server on port {port}...")
     asyncio.run(server.serve())
-    
-
-
-
-

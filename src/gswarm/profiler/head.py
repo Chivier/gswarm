@@ -70,6 +70,9 @@ class HeadNodeState:
         # Report generation related attributes
         self.report_metrics = None
 
+        # Time consumption of each request tracking
+        self.time_consumption_data: Dict[str, List[Dict[str, float]]] = {}
+
 
 state = HeadNodeState()
 
@@ -377,7 +380,6 @@ async def collect_and_store_frame():
 
     logger.info("Profiling data collection loop finished.")
     if state.output_filename and (state.profiling_data_frames or state.gpu_total_util):
-        logger.info(f"Attempting to save data to {state.output_filename}...")
 
         summary_by_device = {}
         for gpu_id, total_util in state.gpu_total_util.items():
@@ -407,21 +409,13 @@ async def collect_and_store_frame():
                 summary_by_client.setdefault(client_key, {})["avg_disk_util"] = f"{avg_disk:.2f}"
 
         output_data = {
-            "frames": state.profiling_data_frames,
             "summary_by_device": summary_by_device,
             "summary_by_client": summary_by_client,  # Add client-level system metrics summary
         }
-
-        try:
-            async with aiofiles.open(state.output_filename, mode="w") as f:
-                await f.write(json.dumps(output_data, indent=2))
-            logger.info(f"Profiling data successfully saved to {state.output_filename}")
-            draw_metrics(output_data, state.report_filename, state.report_metrics)
-
-        except Exception as e:
-            logger.error(f"Failed to save profiling data: {e}")
+        return output_data
     else:
         logger.info("No profiling data to save.")
+        return {}
 
 
 async def health_monitor_task():
