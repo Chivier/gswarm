@@ -3,6 +3,7 @@ import sys
 import tempfile
 from loguru import logger
 import time
+import uuid
 
 
 def get_pid_file(component: str = "client") -> str:
@@ -16,6 +17,15 @@ def get_pid_file(component: str = "client") -> str:
     """
     return os.path.join(tempfile.gettempdir(), f"gswarm_{component}.pid")
 
+def get_log_filepath(component: str = "client") -> str:
+    if not os.path.exists("/tmp/gswarm"):
+        os.makedirs("/tmp/gswarm")
+
+    timestamp = int(time.time())
+    unique_id = uuid.uuid4().hex[:8]
+    log_file_path = f"/tmp/gswarm/gswarm_{component}_{timestamp}_{unique_id}.log"
+    return log_file_path
+
 
 def check_pid_file_exists(pid_file_path: str) -> bool:
     """
@@ -26,7 +36,7 @@ def check_pid_file_exists(pid_file_path: str) -> bool:
     return os.path.exists(pid_file_path)
 
 
-def daemonize(pid_file_path: str = None):
+def daemonize(log_file_path: str = None):
     try:
         pid = os.fork()
         if pid > 0:
@@ -50,13 +60,8 @@ def daemonize(pid_file_path: str = None):
         sys.stderr.write(f"fork #2 failed: {e}\n")
         sys.exit(1)
 
-    if pid_file_path is None:
-        pid_file_path = get_pid_file()
 
-    # create log file path
-    pid_file_name = os.path.basename(pid_file_path).replace(".pid", "")
-    timestamp = int(time.time())
-    log_file_path = f"/tmp/{pid_file_name}_{timestamp}.log"
+
 
     sys.stdout.flush()
     sys.stderr.flush()
@@ -67,8 +72,6 @@ def daemonize(pid_file_path: str = None):
     with open(log_file_path, "ab", 0) as f:
         os.dup2(f.fileno(), sys.stderr.fileno())
 
-    with open(pid_file_path, "w") as f:
-        f.write(str(os.getpid()))
     logger.info(
-        f"Daemon started with PID {os.getpid()}, PID file created at {pid_file_path}, logs redirected to {log_file_path}"
+        f"Daemon started with PID {os.getpid()}, logs redirected to {log_file_path}"
     )

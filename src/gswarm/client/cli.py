@@ -8,7 +8,7 @@ import platform
 from typing import Optional
 from loguru import logger
 from ..utils.connection_info import get_connection_file, save_host_connection, clear_connection_info
-from ..utils.daemonizer import daemonize, get_pid_file, check_pid_file_exists
+from ..utils.daemonizer import daemonize, get_pid_file, check_pid_file_exists, get_log_filepath
 
 app = typer.Typer(help="Client node management commands")
 
@@ -83,15 +83,6 @@ def connect(
         logger.warning(f"Already connected to {client_state.host_address}. Use 'disconnect' first.")
         return
 
-    pid_file_path = get_pid_file(component="client")
-    if check_pid_file_exists(pid_file_path):
-        logger.warning(f"Client PID file already exists at {pid_file_path}. Use 'disconnect' first.")
-        with open(pid_file_path, "r") as f:
-            existing_pid = f.read().strip()
-        logger.warning(f"Existing client PID: {existing_pid}")
-        logger.warning("If you are sure the client is not running, delete the PID file and try again.")
-        logger.warning(f"You can find it at: {pid_file_path}")
-        return
 
     logger.info(f"Connecting to host at {host_address}")
     logger.info(f"  Resilient mode: {'enabled' if resilient else 'disabled'}")
@@ -126,11 +117,12 @@ def connect(
     client_state.enable_bandwidth = enable_bandwidth
 
     if not block:
-        connection_file = get_connection_file()
+        # connection_file = get_connection_file()
+        log_file_path = get_log_filepath(component="client")
         logger.info(
-            f"Running in non-blocking mode, client will run in background, please find logs in {connection_file}"
+            f"Running in non-blocking mode, client will run in background, please check logs at {log_file_path}"
         )
-        daemonize()
+        daemonize(log_file_path)
 
     # Start model client (optional)
     from ..model.fastapi_client import ModelClient
