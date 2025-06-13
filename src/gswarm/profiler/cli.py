@@ -44,7 +44,9 @@ def start(
 
     logger.info(f"Starting profiling session: {name}")
     logger.info(f"Connecting to profiler at: {host}")
-    logger.info(f"  Report metrics: {', '.join([m.value for m in report_metrics]) if report_metrics else 'Default metrics'}")
+    logger.info(
+        f"  Report metrics: {', '.join([m.value for m in report_metrics]) if report_metrics else 'Default metrics'}"
+    )
     if freq:
         logger.info(f"  Frequency override: {freq}ms")
 
@@ -54,7 +56,9 @@ def start(
 
             async with grpc.aio.insecure_channel(host) as channel:
                 stub = profiler_pb2_grpc.ProfilerServiceStub(channel)
-                request = profiler_pb2.StartProfilingRequest(name=name, report_metrics=[m.value for m in report_metrics] or [])
+                request = profiler_pb2.StartProfilingRequest(
+                    name=name, report_metrics=[m.value for m in report_metrics] or []
+                )
                 response = await stub.StartProfiling(request)
 
                 if response.success:

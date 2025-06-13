@@ -28,6 +28,7 @@ except ImportError:
 
 from gswarm.profiler.utils import draw_metrics
 
+
 # --- Global State for Head Node ---
 class HeadNodeState:
     def __init__(self):
@@ -245,7 +246,7 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
             return profiler_pb2.StopProfilingResponse(success=False, message="Profiling is not active.")
 
         logger.info("Stopping profiling...")
-        
+
         await profiler_stop_cleanup(state)
 
         return profiler_pb2.StopProfilingResponse(
@@ -403,7 +404,6 @@ async def collect_and_store_frame():
         }
         logger.info("Summary of profiling data collected:")
         logger.info(json.dumps(output_data, indent=2))
-        
 
         return output_data
     else:
