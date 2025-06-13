@@ -16,6 +16,8 @@ from gswarm.profiler.session_manager import SessionManager, ProfilingSession
 from gswarm.profiler.persistence import FileBasedStorage
 from gswarm.profiler.adaptive_sampler import AdaptiveSampler
 
+from gswarm.profiler.head_common import profiler_stop_cleanup
+
 # Import generated protobuf classes (these will be generated)
 try:
     from gswarm.profiler import profiler_pb2
@@ -25,7 +27,6 @@ except ImportError:
     raise
 
 from gswarm.profiler.utils import draw_metrics
-
 
 # --- Global State for Head Node ---
 class HeadNodeState:
@@ -244,19 +245,8 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
             return profiler_pb2.StopProfilingResponse(success=False, message="Profiling is not active.")
 
         logger.info("Stopping profiling...")
-        async with state.data_lock:
-            state.is_profiling = False
-
-        if state.profiling_task:
-            try:
-                await asyncio.wait_for(state.profiling_task, timeout=5.0)
-            except asyncio.TimeoutError:
-                logger.warning("Profiling task did not finish in time. Data might be incomplete for the last frame.")
-                state.profiling_task.cancel()
-            except Exception as e:
-                logger.error(f"Error during profiling task shutdown: {e}")
-
-        state.profiling_task = None
+        
+        await profiler_stop_cleanup(state)
 
         return profiler_pb2.StopProfilingResponse(
             success=True,
@@ -380,7 +370,6 @@ async def collect_and_store_frame():
 
     logger.info("Profiling data collection loop finished.")
     if state.output_filename and (state.profiling_data_frames or state.gpu_total_util):
-
         summary_by_device = {}
         for gpu_id, total_util in state.gpu_total_util.items():
             count = state.gpu_util_count.get(gpu_id, 0)
@@ -412,6 +401,10 @@ async def collect_and_store_frame():
             "summary_by_device": summary_by_device,
             "summary_by_client": summary_by_client,  # Add client-level system metrics summary
         }
+        logger.info("Summary of profiling data collected:")
+        logger.info(json.dumps(output_data, indent=2))
+        
+
         return output_data
     else:
         logger.info("No profiling data to save.")

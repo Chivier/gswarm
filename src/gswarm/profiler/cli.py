@@ -6,8 +6,16 @@ from datetime import datetime
 from loguru import logger
 import asyncio
 import grpc
+import enum
 
 app = typer.Typer(help="GPU profiling operations")
+
+
+class AvailableReportMetrics(enum.Enum):
+    UTILIZATION = "gpu_utilization"
+    VMEMORY = "gpu_memory"
+    VBANDWIDTH = "gpu_dram_bandwidth"
+    VBUBBLE = "gpu_bubble"
 
 
 @app.command()
@@ -15,6 +23,14 @@ def start(
     name: Optional[str] = typer.Option(None, "--name", "-n", help="Name for the profiling session"),
     freq: Optional[int] = typer.Option(None, "--freq", "-f", help="Override sampling frequency"),
     host: str = typer.Option(None, "--host", help="Host address (auto-discovered if not specified)"),
+    report_metrics: Optional[list[AvailableReportMetrics]] = typer.Option(
+        None,
+        "--report-metrics",
+        "-r",
+        help="List of metrics to report (e.g., gpu_utilization, gpu_memory, gpu_dram_bandwidth, gpu_bubble). Default = gpu_utilization,gpu_memory,gpu_dram_bandwidth.",
+        case_sensitive=True,
+        show_choices=True,
+    ),
 ):
     """Start a profiling session"""
     if not name:
@@ -28,6 +44,7 @@ def start(
 
     logger.info(f"Starting profiling session: {name}")
     logger.info(f"Connecting to profiler at: {host}")
+    logger.info(f"  Report metrics: {', '.join([m.value for m in report_metrics]) if report_metrics else 'Default metrics'}")
     if freq:
         logger.info(f"  Frequency override: {freq}ms")
 
@@ -37,7 +54,7 @@ def start(
 
             async with grpc.aio.insecure_channel(host) as channel:
                 stub = profiler_pb2_grpc.ProfilerServiceStub(channel)
-                request = profiler_pb2.StartProfilingRequest(name=name)
+                request = profiler_pb2.StartProfilingRequest(name=name, report_metrics=[m.value for m in report_metrics] or [])
                 response = await stub.StartProfiling(request)
 
                 if response.success:

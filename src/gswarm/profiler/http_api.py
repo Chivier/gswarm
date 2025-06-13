@@ -133,11 +133,8 @@ async def stop_profiling():
             return ProfilingResponse(success=False, message="Profiling is not active.")
 
         logger.info("Stopping profiling via HTTP API...")
-        async with state.data_lock:
-            state.is_profiling = False
-
-        await profiler_stop_cleanup(state)
         
+        await profiler_stop_cleanup(state) 
 
         state.profiling_task = None
 

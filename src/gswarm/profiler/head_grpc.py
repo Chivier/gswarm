@@ -193,6 +193,7 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
             state.gpu_util_count = {}
             state.gpu_total_memory = {}
             state.gpu_memory_count = {}
+            state.report_metrics = list(request.report_metrics) if len(request.report_metrics) > 0 else None
 
         state.profiling_task = asyncio.create_task(collect_and_store_frame())
         logger.info(f"Profiling started. Output will be saved to {state.output_filename}")
@@ -208,12 +209,30 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
             return profiler_pb2.StopProfilingResponse(success=False, message="Profiling is not active.")
 
         logger.info("Stopping profiling...")
-        async with state.data_lock:
-            state.is_profiling = False
 
         # FIXME: Following code never runs
         logger.info("Starting Cleanup...")
-        await profiler_stop_cleanup(state)
+        
+        async with state.data_lock:
+            state.is_profiling = False
+        # Save profile data and generate report Here
+        if state.profiling_task:
+            try:
+                logger.info("Stopping profiling and saving data...")
+                await asyncio.wait_for(state.profiling_task, timeout=5.0)
+            except asyncio.TimeoutError:
+                # If the task did not finish in time, we log a warning and cancel it
+                # No profile data will be saved if the task is not completed
+                logger.warning("Profiling task did not finish in time. Data might be incomplete for the last frame.")
+                state.profiling_task.cancel()
+            except Exception as e:
+                logger.error(f"Error during profiling task shutdown: {e}")
+                # Print full traceback for debugging
+                import traceback
+
+                logger.error(traceback.format_exc())
+        else:
+            logger.warning("No profiling task was running. No data to save.")
 
         state.profiling_task = None
 
@@ -235,8 +254,6 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
 def log_total_gpus():
     total_gpus = sum(len(gpus) for gpus in state.client_gpu_info.values())
     logger.info(f"Total GPUs connected: {total_gpus} across {len(state.client_gpu_info)} client(s).")
-
-
 
 
 async def run_grpc_server(host: str, port: int):

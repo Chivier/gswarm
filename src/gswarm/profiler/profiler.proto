@@ -65,6 +65,7 @@ message StatusResponse {
 
 message StartProfilingRequest {
     string name = 1;
+    repeated string report_metrics = 2;
 }
 
 message StartProfilingResponse {

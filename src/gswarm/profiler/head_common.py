@@ -7,11 +7,13 @@ from .utils import draw_metrics
 
 
 async def profiler_stop_cleanup(state):
+    async with state.data_lock:
+        state.is_profiling = False
     # Save profile data and generate report Here
-    logger.info("Stopping profiling and saving data...")
     output_data = {}
     if state.profiling_task:
         try:
+            logger.info("Stopping profiling and saving data...")
             output_data = await asyncio.wait_for(state.profiling_task, timeout=5.0)
         except asyncio.TimeoutError:
             # If the task did not finish in time, we log a warning and cancel it
@@ -22,12 +24,13 @@ async def profiler_stop_cleanup(state):
             logger.error(f"Error during profiling task shutdown: {e}")
             # Print full traceback for debugging
             import traceback
+
             logger.error(traceback.format_exc())
     else:
         logger.warning("No profiling task was running. No data to save.")
 
     output_data["request_time_info"] = state.time_consumption_data
-    output_data["frames"] = state.profiling_data_frames,
+    output_data["frames"] = state.profiling_data_frames
 
     try:
         async with aiofiles.open(state.output_filename, mode="w") as f:
