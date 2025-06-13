@@ -406,7 +406,7 @@ class ResilientClient:
         logger.info("Client shutdown complete")
 
 
-def create_lifespan(head_address: str, enable_bandwidth: bool) -> FastAPI:
+def create_resilient_lifespan(head_address: str, enable_bandwidth: bool) -> FastAPI:
     """Create FastAPI app with resilient client context"""
 
     @asynccontextmanager
@@ -422,9 +422,9 @@ def create_lifespan(head_address: str, enable_bandwidth: bool) -> FastAPI:
     return resilient_client_context
 
 
-def create_app(head_address: str, enable_bandwidth: bool) -> FastAPI:
+def create_resilient_app(head_address: str, enable_bandwidth: bool) -> FastAPI:
     """Create FastAPI app with resilient client"""
-    app = FastAPI(lifespan=create_lifespan(head_address, enable_bandwidth))
+    app = FastAPI(lifespan=create_resilient_lifespan(head_address, enable_bandwidth))
 
     @app.get("/shutdown", summary="Graceful shutdown")
     async def shutdown():
@@ -441,7 +441,7 @@ def create_app(head_address: str, enable_bandwidth: bool) -> FastAPI:
 
 def start_resilient_client(head_address: str, enable_bandwidth: bool):
     """Launch the resilient client"""
-    app = create_app(head_address, enable_bandwidth)
+    app = create_resilient_app(head_address, enable_bandwidth)
 
     from uvicorn import Config, Server
     import socket

@@ -4,6 +4,8 @@ import nvitop
 import platform
 import psutil  # Add psutil for system metrics
 import time
+import os
+import signal
 from loguru import logger
 from typing import List, Dict, Any
 
@@ -12,6 +14,9 @@ from rich.table import Table
 from rich.console import Console
 from rich.layout import Layout
 from rich.panel import Panel
+
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
 
 # Import generated protobuf classes
 try:
@@ -376,11 +381,59 @@ async def run_client_node(head_address: str, enable_bandwidth: bool):
         retry_delay = min(retry_delay * 2, 60)  # Exponential backoff up to 60s
 
 
+def create_client_lifespan(head_address: str, enable_bandwidth: bool) -> FastAPI:
+    """Create FastAPI app with resilient client context"""
+
+    @asynccontextmanager
+    async def resilient_client_context(app: FastAPI):
+        """Context manager for ResilientClient"""
+        task = asyncio.create_task(run_client_node(head_address, enable_bandwidth))
+        yield
+
+        task.cancel()
+
+    return resilient_client_context
+
+
+def create_client_app(head_address: str, enable_bandwidth: bool) -> FastAPI:
+    """Create FastAPI app with resilient client"""
+    app = FastAPI(lifespan=create_client_lifespan(head_address, enable_bandwidth))
+
+    @app.get("/shutdown", summary="Graceful shutdown")
+    async def shutdown():
+        """Endpoint to gracefully shutdown the client"""
+        pid = os.getpid()
+        logger.info(f"Shutdown requested for client with PID {pid}")
+        os.kill(pid, signal.SIGINT)
+
+        # cli may cannot receive this message
+        return {"message": "Client shutdown initiated"}
+
+    return app
+
+
 def start_client_node_sync(head_address: str, enable_bandwidth_client: bool):
     """Start client node - configuration will be read from host"""
-    try:
-        asyncio.run(run_client_node(head_address, enable_bandwidth_client))
-    except KeyboardInterrupt:
-        logger.info("Client shutdown requested.")
-    finally:
-        logger.info("Client exiting.")
+    app = create_client_app(head_address, enable_bandwidth_client)
+
+    from uvicorn import Config, Server
+    import socket
+    # Find an available port from 10000 to 20000
+
+    port = None
+    for candidate_port in range(10000, 20001):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.bind(("0.0.0.0", candidate_port))
+                port = candidate_port
+                break
+        except OSError:
+            continue
+
+    if port is None:
+        raise RuntimeError("No available port found in range 10000-20000")
+    config = Config(app, host="0.0.0.0", port=port, log_level="info")
+    server = Server(config)
+
+    logger.info(f"Starting client server on port {port}...")
+    asyncio.run(server.serve())

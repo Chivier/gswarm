@@ -1,0 +1,57 @@
+import os
+import signal
+from fastapi import FastAPI
+from loguru import logger
+import asyncio
+
+
+def create_client_app(head_address: str, enable_bandwidth: bool, lifespan_func) -> FastAPI:
+    """Create FastAPI app with resilient client"""
+    app = FastAPI(lifespan=lifespan_func(head_address, enable_bandwidth))
+
+    async def delayed_shutdown(pid: int):
+        """Delayed shutdown to ensure response is sent"""
+        await asyncio.sleep(0.5)  # Small delay to ensure response is sent
+        os.kill(pid, signal.SIGINT)
+
+    @app.get("/shutdown", summary="Graceful shutdown")
+    async def shutdown():
+        """Endpoint to gracefully shutdown the client"""
+        pid = os.getpid()
+        logger.info(f"Shutdown requested for client with PID {pid}")
+
+        # Return response first, then shutdown
+        response = {"message": "Client shutdown initiated"}
+
+        # Schedule shutdown after response is sent
+        asyncio.create_task(delayed_shutdown(pid))
+
+        return response
+
+    return app
+
+
+def start_client(app):
+    """Launch the client"""
+
+    from uvicorn import Config, Server
+    import socket
+    # Find an available port from 10000 to 20000
+
+    port = None
+    for candidate_port in range(10000, 20001):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.bind(("0.0.0.0", candidate_port))
+                port = candidate_port
+                break
+        except OSError:
+            continue
+
+    if port is None:
+        raise RuntimeError("No available port found in range 10000-20000")
+    config = Config(app, host="0.0.0.0", port=port, log_level="info")
+    server = Server(config)
+
+    logger.info(f"Starting client server on port {port}...")
+    asyncio.run(server.serve())

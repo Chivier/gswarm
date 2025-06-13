@@ -9,6 +9,7 @@ from typing import Optional
 from loguru import logger
 from ..utils.connection_info import get_connection_file, save_host_connection, clear_connection_info
 from ..utils.daemonizer import daemonize, get_pid_file, check_pid_file_exists, get_log_filepath
+from .client_common import create_client_app, start_client
 
 app = typer.Typer(help="Client node management commands")
 
@@ -47,13 +48,12 @@ def create_runner(host_address: str, resilient: bool, enable_bandwidth: bool):
     def client_runner():
         try:
             if resilient:
-                from ..profiler.client_resilient import start_resilient_client
-
-                start_resilient_client(host_address, enable_bandwidth)
+                from ..profiler.client_resilient import create_resilient_lifespan as lifespan_func
             else:
-                from ..profiler.client import start_client_node_sync
+                from ..profiler.client import create_client_lifespan as lifespan_func
 
-                start_client_node_sync(host_address, enable_bandwidth)
+            app = create_client_app(host_address, enable_bandwidth, lifespan_func)
+            start_client(app)
         except KeyboardInterrupt:
             logger.info("Client interrupted")
         except Exception as e:
