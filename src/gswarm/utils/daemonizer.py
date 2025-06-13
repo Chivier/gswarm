@@ -19,11 +19,12 @@ def get_pid_file(component: str = "client") -> str:
 
 
 def get_log_filepath(component: str = "client") -> str:
-    if not os.path.exists("/tmp/gswarm"):
-        os.makedirs("/tmp/gswarm")
-
     timestamp = int(time.time())
     unique_id = uuid.uuid4().hex[:8]
+
+    if not os.path.exists(f"/tmp/gswarm_{unique_id}"):
+        os.makedirs(f"/tmp/gswarm_{unique_id}")
+
     log_file_path = f"/tmp/gswarm_{unique_id}/gswarm_{component}_{timestamp}.log"
     return log_file_path
 
