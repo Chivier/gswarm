@@ -38,4 +38,15 @@ Response:
 }
 ```
 
+> Not Implemented 
+### Peer Management
 
+#### Update Peer List
+```http
+POST /api/v1/peer/update
+```
+
+#### Remove Peer
+```http
+DELETE /api/v1/peer/remove
+```

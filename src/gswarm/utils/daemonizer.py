@@ -24,7 +24,7 @@ def get_log_filepath(component: str = "client") -> str:
 
     timestamp = int(time.time())
     unique_id = uuid.uuid4().hex[:8]
-    log_file_path = f"/tmp/gswarm/gswarm_{component}_{timestamp}_{unique_id}.log"
+    log_file_path = f"/tmp/gswarm_{unique_id}/gswarm_{component}_{timestamp}.log"
     return log_file_path
 
 

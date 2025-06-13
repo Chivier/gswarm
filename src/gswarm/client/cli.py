@@ -11,6 +11,8 @@ from ..utils.connection_info import get_connection_file, save_host_connection, c
 from ..utils.daemonizer import daemonize, get_pid_file, check_pid_file_exists, get_log_filepath
 from .client_common import create_client_app, start_client
 
+import requests
+
 app = typer.Typer(help="Client node management commands")
 
 
@@ -153,51 +155,22 @@ def connect(
 
 
 @app.command(deprecated=True)
-def disconnect():
+def shutdown(
+    client_addr: str = typer.Option(
+        "localhost:10000", "--client", "-c", help="Client address to disconnect (e.g., localhost:10000)"
+    ),
+):
     """Disconnect from the host"""
 
     logger.warning("The 'disconnect' command is deprecated. Please wait for new commands to be implemented.")
 
-    pid_file_path = get_pid_file(component="client")
-    if not check_pid_file_exists(pid_file_path):
-        logger.warning(f"No PID file found at {pid_file_path}. Cannot disconnect.")
-        return
-
-    with open(pid_file_path, "r") as f:
-        client_pid = int(f.read().strip())
-
-    logger.info(f"Disconnecting client with PID {client_pid}...")
-    logger.info(f"Disconnecting from host at {client_state.host_address}...")
-
-    # Clear connection info
-    clear_connection_info()
+    logger.info(f"Shutting down client at {client_addr}")
 
     try:
-        # Kill the client process if it exists
-        import os
-
-        if os.path.exists(pid_file_path):
-            os.remove(pid_file_path)
-            logger.info(f"Removed PID file at {pid_file_path}")
-        else:
-            logger.warning(f"PID file {pid_file_path} does not exist, nothing to remove")
-
-        if client_pid and os.path.exists(f"/proc/{client_pid}"):
-            logger.info(f"Killing client process with PID {client_pid}...")
-            os.kill(client_pid, signal.SIGTERM)
+        requests.get(f"http://{client_addr}/shutdown", timeout=5)
     except Exception as e:
         logger.error(f"Error while trying to kill client process: {e}")
         return
-    logger.info("Waiting for client thread to finish...")
-    # Wait for the client thread to finish
-    import time
-
-    time.sleep(1)  # Give it a moment to clean up
-    if client_state.client_thread and client_state.client_thread.is_alive():
-        logger.warning("Client thread did not exit gracefully, forcing shutdown")
-        client_state.client_thread.join(timeout=5.0)
-        if client_state.client_thread.is_alive():
-            logger.error("Client thread did not shutdown properly, please check logs")
 
 
 @app.command()
