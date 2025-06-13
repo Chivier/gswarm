@@ -52,7 +52,6 @@ def main():
         "head.py",
         "client.py",
         "cli.py",
-        "head_grpc.py",
         "client_grpc.py",
     ]
 
