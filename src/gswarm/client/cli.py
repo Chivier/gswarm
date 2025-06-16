@@ -154,23 +154,47 @@ def connect(
     client_state.client_thread.join()
 
 
-@app.command(deprecated=True)
-def shutdown(
-    client_addr: str = typer.Option(
-        "localhost:10000", "--client", "-c", help="Client address to disconnect (e.g., localhost:10000)"
-    ),
-):
+@app.command()
+def disconnect():
     """Disconnect from the host"""
 
-    logger.warning("The 'disconnect' command is deprecated. Please wait for new commands to be implemented.")
-
-    logger.info(f"Shutting down client at {client_addr}")
-
-    try:
-        requests.get(f"http://{client_addr}/shutdown", timeout=5)
-    except Exception as e:
-        logger.error(f"Error while trying to kill client process: {e}")
+    if not client_state.is_connected:
+        logger.info("Not connected to any host")
         return
+
+    logger.info(f"Disconnecting from host at {client_state.host_address}")
+
+    # Disconnect from model service if connected
+    if client_state.model_client:
+        try:
+            logger.info("Disconnecting from model service...")
+            client_state.model_client = None
+        except Exception as e:
+            logger.debug(f"Error disconnecting from model service: {e}")
+
+    # Signal shutdown to any running threads
+    client_state.shutdown_event.set()
+
+    # Wait for client thread to finish gracefully
+    if client_state.client_thread and client_state.client_thread.is_alive():
+        logger.info("Waiting for client thread to stop...")
+        try:
+            # Give the thread some time to stop gracefully
+            client_state.client_thread.join(timeout=5.0)
+            if client_state.client_thread.is_alive():
+                logger.warning("Client thread did not stop gracefully within timeout")
+            else:
+                logger.info("Client thread stopped gracefully")
+        except Exception as e:
+            logger.error(f"Error waiting for client thread: {e}")
+
+    # Reset client state
+    client_state.reset()
+
+    # Clear connection information
+    clear_connection_info()
+
+    logger.info("Successfully disconnected from host")
 
 
 @app.command()

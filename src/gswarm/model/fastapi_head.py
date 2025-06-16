@@ -148,8 +148,8 @@ class HeadState:
                 # Validate the checkpoint path before adding
                 if checkpoint_path and validate_model_path(checkpoint_path):
                     model.checkpoints["disk"] = checkpoint_path
-                    model.status = ModelStatus.READY
-                    status_msg = "✓ READY (valid path)"
+                    model.status = ModelStatus.DISK
+                    status_msg = "✓ DISK (valid path)"
                 else:
                     if checkpoint_path:
                         logger.warning(f"Invalid path for {model_name}: {checkpoint_path}")
@@ -291,10 +291,10 @@ def validate_model_checkpoints(model: ModelInstance) -> bool:
 
 
 def update_model_status_based_on_checkpoints(model: ModelInstance) -> None:
-    """Update model status based on available valid checkpoints"""
+    """Update model status based on available valid checkpoints using disk/dram priority"""
     if not model.checkpoints:
         # No valid checkpoints
-        if model.status in [ModelStatus.READY, ModelStatus.SERVING]:
+        if model.status in [ModelStatus.DISK, ModelStatus.DRAM, ModelStatus.SERVING]:
             model.status = ModelStatus.REGISTERED
             logger.info(f"Model {model.model_name} status changed to REGISTERED (no valid checkpoints)")
     else:
@@ -302,8 +302,13 @@ def update_model_status_based_on_checkpoints(model: ModelInstance) -> None:
         if len(model.serving_instances) > 0:
             model.status = ModelStatus.SERVING
         elif model.status in [ModelStatus.REGISTERED, ModelStatus.ERROR]:
-            model.status = ModelStatus.READY
-            logger.info(f"Model {model.model_name} status changed to READY (valid checkpoints found)")
+            # Prioritize DRAM over DISK if both are available
+            if "dram" in model.checkpoints:
+                model.status = ModelStatus.DRAM
+                logger.info(f"Model {model.model_name} status changed to DRAM (available in DRAM)")
+            elif "disk" in model.checkpoints:
+                model.status = ModelStatus.DISK
+                logger.info(f"Model {model.model_name} status changed to DISK (available on disk)")
 
 
 def discover_model_cache_path(model_name: str) -> Optional[str]:
@@ -437,17 +442,17 @@ async def register_model(request: RegisterModelRequest):
 
     if discovered_path:
         model.checkpoints["disk"] = discovered_path
-        model.status = ModelStatus.READY
+        model.status = ModelStatus.DISK
         status_info.update(
             {
-                "status": "ready",
+                "status": "disk",
                 "discovered_path": discovered_path,
-                "message": "Model found in cache and marked as ready",
+                "message": "Model found in cache and marked as available on disk",
             }
         )
         logger.info(f"Registered model {request.name} with discovered path: {discovered_path}")
     else:
-        logger.info(f"Registered model {request.name} without valid cache path - use download to make it ready")
+        logger.info(f"Registered model {request.name} without valid cache path - use download to make it available")
         status_info["message"] = "Model registered but no valid cache found - download required"
 
     state.models[request.name] = model
@@ -506,14 +511,17 @@ async def perform_download(model_name: str, source_url: str, target_device: str)
         else:
             await download_from_url(model_name, source_url, storage_path)
 
-        # Validate the downloaded path before marking as ready
+        # Validate the downloaded path and set appropriate status
         if validate_model_path(str(storage_path)):
-            model.status = ModelStatus.READY
             model.checkpoints[target_device] = str(storage_path)
 
-            # If downloaded to DRAM, also load the model variable
+            # Set status based on target device
             if target_device == "dram":
+                model.status = ModelStatus.DRAM
+                # Load model into memory variables
                 load_safetensors_to_dram(storage_path, model_name)
+            else:  # target_device == "disk"
+                model.status = ModelStatus.DISK
 
             logger.info(f"✅ Download completed and validated: {model_name} -> {target_device}")
         else:
@@ -904,7 +912,7 @@ async def stop_serving(request: StopServeRequest):
 
     # Update model status if no more instances
     if len(model.serving_instances) == 0:
-        # Validate checkpoints before setting to READY
+        # Update status based on remaining checkpoints
         update_model_status_based_on_checkpoints(model)
 
     logger.info(f"Stopped serving instance {request.instance_id} for {request.model_name}")
@@ -1116,7 +1124,8 @@ async def validate_all_models():
             }
         )
 
-    ready_count = sum(1 for m in state.models.values() if m.status == ModelStatus.READY)
+    disk_count = sum(1 for m in state.models.values() if m.status == ModelStatus.DISK)
+    dram_count = sum(1 for m in state.models.values() if m.status == ModelStatus.DRAM)
     registered_count = sum(1 for m in state.models.values() if m.status == ModelStatus.REGISTERED)
 
     return StandardResponse(
@@ -1124,7 +1133,8 @@ async def validate_all_models():
         message="Model validation completed",
         data={
             "total_models": len(state.models),
-            "ready_models": ready_count,
+            "disk_models": disk_count,
+            "dram_models": dram_count,
             "registered_models": registered_count,
             "validated_models": validated_models,
         },

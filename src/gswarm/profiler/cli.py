@@ -233,3 +233,244 @@ def recover(
         logger.info("Session recovery not yet implemented")
     else:
         logger.error("Please specify --list, --session-id, or --name")
+
+
+@app.command()
+def read(
+    node: Optional[str] = typer.Option(None, "--node", help="Specific node to read status from"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Output to JSON file (default: output.json)"),
+    host: str = typer.Option(None, "--host", help="Host address (auto-discovered if not specified)"),
+):
+    """Read cluster or node status with metrics (GPU util, DRAM, etc.)"""
+    # Auto-discover profiler address if not specified
+    if not host:
+        from ..utils.service_discovery import discover_profiler_address
+
+        host = discover_profiler_address()
+
+    logger.info(f"Reading {'cluster' if not node else f'node {node}'} status...")
+    logger.info(f"Connecting to profiler at: {host}")
+
+    async def read_status_async():
+        try:
+            from . import profiler_pb2, profiler_pb2_grpc
+            import json
+            from rich.console import Console
+            from rich.table import Table
+
+            async with grpc.aio.insecure_channel(host) as channel:
+                stub = profiler_pb2_grpc.ProfilerServiceStub(channel)
+
+                # Create request for cluster or specific node
+                if node:
+                    request = profiler_pb2.ReadNodeStatusRequest(node_id=node)
+                    response = await stub.ReadNodeStatus(request)
+                    nodes_data = [response.node_status] if response.success else []
+                else:
+                    request = profiler_pb2.ReadClusterStatusRequest()
+                    response = await stub.ReadClusterStatus(request)
+                    nodes_data = response.nodes if response.success else []
+
+                if not response.success:
+                    logger.error(f"Failed to read status: {response.message}")
+                    return
+
+                # Prepare data for display and JSON export
+                status_data = {
+                    "timestamp": datetime.now().isoformat(),
+                    "cluster_id": getattr(response, "cluster_id", "unknown"),
+                    "nodes": [],
+                }
+
+                # Create rich table for CLI display
+                console = Console()
+                table = Table(title=f"{'Cluster' if not node else 'Node'} Status")
+
+                table.add_column("Node ID", style="cyan")
+                table.add_column("GPU ID", style="green")
+                table.add_column("GPU Util %", justify="right")
+                table.add_column("Memory Used", justify="right")
+                table.add_column("Memory Total", justify="right")
+                table.add_column("DRAM BW %", justify="right")
+                table.add_column("NVLink BW", justify="right")
+                table.add_column("Temperature", justify="right")
+                table.add_column("Power", justify="right")
+
+                # Process each node's data
+                for node_status in nodes_data:
+                    node_data = {"node_id": node_status.node_id, "gpus": []}
+
+                    for gpu in node_status.gpus:
+                        gpu_data = {
+                            "gpu_id": gpu.gpu_id,
+                            "utilization": gpu.utilization,
+                            "memory_used": gpu.memory_used,
+                            "memory_total": gpu.memory_total,
+                            "dram_bandwidth": gpu.dram_bandwidth,
+                            "nvlink_bandwidth": gpu.nvlink_bandwidth,
+                            "temperature": gpu.temperature,
+                            "power": gpu.power,
+                        }
+                        node_data["gpus"].append(gpu_data)
+
+                        # Add row to table
+                        table.add_row(
+                            node_status.node_id,
+                            str(gpu.gpu_id),
+                            f"{gpu.utilization:.1f}%" if gpu.utilization >= 0 else "N/A",
+                            f"{gpu.memory_used / 1024:.1f} GB" if gpu.memory_used >= 0 else "N/A",
+                            f"{gpu.memory_total / 1024:.1f} GB" if gpu.memory_total >= 0 else "N/A",
+                            f"{gpu.dram_bandwidth:.1f}%" if gpu.dram_bandwidth >= 0 else "N/A",
+                            f"{gpu.nvlink_bandwidth / 1024:.1f} GB/s" if gpu.nvlink_bandwidth >= 0 else "N/A",
+                            f"{gpu.temperature}°C" if gpu.temperature >= 0 else "N/A",
+                            f"{gpu.power:.1f}W" if gpu.power >= 0 else "N/A",
+                        )
+
+                    status_data["nodes"].append(node_data)
+
+                # Display table
+                console.print(table)
+
+                # Export to JSON if requested
+                if output or (output is None):  # Default to output.json if no filename specified
+                    output_file = output or "output.json"
+                    with open(output_file, "w") as f:
+                        json.dump(status_data, f, indent=2)
+                    logger.info(f"Status data exported to: {output_file}")
+
+        except Exception as e:
+            logger.error(f"Failed to read status: {e}")
+
+    asyncio.run(read_status_async())
+
+
+@app.command("enable-bandwidth")
+def enable_bandwidth(
+    host: str = typer.Option(None, "--host", help="Host address (auto-discovered if not specified)"),
+):
+    """Enable bandwidth profiling"""
+    # Auto-discover profiler address if not specified
+    if not host:
+        from ..utils.service_discovery import discover_profiler_address
+
+        host = discover_profiler_address()
+
+    logger.info("Enabling bandwidth profiling...")
+    logger.info(f"Connecting to profiler at: {host}")
+
+    async def enable_bandwidth_async():
+        try:
+            from . import profiler_pb2, profiler_pb2_grpc
+
+            async with grpc.aio.insecure_channel(host) as channel:
+                stub = profiler_pb2_grpc.ProfilerServiceStub(channel)
+                request = profiler_pb2.SetBandwidthProfilingRequest(enable=True)
+                response = await stub.SetBandwidthProfiling(request)
+
+                if response.success:
+                    logger.info(f"Bandwidth profiling enabled: {response.message}")
+                else:
+                    logger.error(f"Failed to enable bandwidth profiling: {response.message}")
+        except Exception as e:
+            logger.error(f"Failed to enable bandwidth profiling: {e}")
+
+    asyncio.run(enable_bandwidth_async())
+
+
+@app.command("disable-bandwidth")
+def disable_bandwidth(
+    host: str = typer.Option(None, "--host", help="Host address (auto-discovered if not specified)"),
+):
+    """Disable bandwidth profiling"""
+    # Auto-discover profiler address if not specified
+    if not host:
+        from ..utils.service_discovery import discover_profiler_address
+
+        host = discover_profiler_address()
+
+    logger.info("Disabling bandwidth profiling...")
+    logger.info(f"Connecting to profiler at: {host}")
+
+    async def disable_bandwidth_async():
+        try:
+            from . import profiler_pb2, profiler_pb2_grpc
+
+            async with grpc.aio.insecure_channel(host) as channel:
+                stub = profiler_pb2_grpc.ProfilerServiceStub(channel)
+                request = profiler_pb2.SetBandwidthProfilingRequest(enable=False)
+                response = await stub.SetBandwidthProfiling(request)
+
+                if response.success:
+                    logger.info(f"Bandwidth profiling disabled: {response.message}")
+                else:
+                    logger.error(f"Failed to disable bandwidth profiling: {response.message}")
+        except Exception as e:
+            logger.error(f"Failed to disable bandwidth profiling: {e}")
+
+    asyncio.run(disable_bandwidth_async())
+
+
+@app.command("enable-nvlink")
+def enable_nvlink(
+    host: str = typer.Option(None, "--host", help="Host address (auto-discovered if not specified)"),
+):
+    """Enable NVLink profiling"""
+    # Auto-discover profiler address if not specified
+    if not host:
+        from ..utils.service_discovery import discover_profiler_address
+
+        host = discover_profiler_address()
+
+    logger.info("Enabling NVLink profiling...")
+    logger.info(f"Connecting to profiler at: {host}")
+
+    async def enable_nvlink_async():
+        try:
+            from . import profiler_pb2, profiler_pb2_grpc
+
+            async with grpc.aio.insecure_channel(host) as channel:
+                stub = profiler_pb2_grpc.ProfilerServiceStub(channel)
+                request = profiler_pb2.SetNVLinkProfilingRequest(enable=True)
+                response = await stub.SetNVLinkProfiling(request)
+
+                if response.success:
+                    logger.info(f"NVLink profiling enabled: {response.message}")
+                else:
+                    logger.error(f"Failed to enable NVLink profiling: {response.message}")
+        except Exception as e:
+            logger.error(f"Failed to enable NVLink profiling: {e}")
+
+    asyncio.run(enable_nvlink_async())
+
+
+@app.command("disable-nvlink")
+def disable_nvlink(
+    host: str = typer.Option(None, "--host", help="Host address (auto-discovered if not specified)"),
+):
+    """Disable NVLink profiling"""
+    # Auto-discover profiler address if not specified
+    if not host:
+        from ..utils.service_discovery import discover_profiler_address
+
+        host = discover_profiler_address()
+
+    logger.info("Disabling NVLink profiling...")
+    logger.info(f"Connecting to profiler at: {host}")
+
+    async def disable_nvlink_async():
+        try:
+            from . import profiler_pb2, profiler_pb2_grpc
+
+            async with grpc.aio.insecure_channel(host) as channel:
+                stub = profiler_pb2_grpc.ProfilerServiceStub(channel)
+                request = profiler_pb2.SetNVLinkProfilingRequest(enable=False)
+                response = await stub.SetNVLinkProfiling(request)
+
+                if response.success:
+                    logger.info(f"NVLink profiling disabled: {response.message}")
+                else:
+                    logger.error(f"Failed to disable NVLink profiling: {response.message}")
+        except Exception as e:
+            logger.error(f"Failed to disable NVLink profiling: {e}")
+
+    asyncio.run(disable_nvlink_async())
