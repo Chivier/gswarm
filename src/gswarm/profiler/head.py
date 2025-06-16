@@ -263,6 +263,144 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
             state.profiling_task = None
         return profiler_pb2.Empty()
 
+    async def ReadClusterStatus(self, request: profiler_pb2.ReadClusterStatusRequest, context):
+        """Read status for all nodes in the cluster"""
+        try:
+            nodes = []
+            
+            # Iterate through all connected clients and build node status
+            async with state.data_lock:
+                for client_id, hostname in state.connected_clients.items():
+                    if client_id in state.client_gpu_info and client_id in state.latest_client_data:
+                        gpus = []
+                        client_data = state.latest_client_data[client_id]
+                        
+                        for gpu_metric in client_data.get("gpus_metrics", []):
+                            gpu_status = profiler_pb2.GPUStatus(
+                                gpu_id=gpu_metric["physical_idx"],
+                                gpu_name=gpu_metric.get("name", f"GPU_{gpu_metric['physical_idx']}"),
+                                utilization=gpu_metric["gpu_util"],
+                                memory_used=gpu_metric.get("mem_used_mb", int(gpu_metric.get("mem_util", 0) * gpu_metric.get("mem_total_mb", 16384))),
+                                memory_total=gpu_metric.get("mem_total_mb", 16384),  # Use actual value or fallback to 16GB
+                                dram_bandwidth=gpu_metric.get("dram_bw_gbps_rx", 0) + gpu_metric.get("dram_bw_gbps_tx", 0),
+                                nvlink_bandwidth=gpu_metric.get("nvlink_bw_gbps_rx", 0) + gpu_metric.get("nvlink_bw_gbps_tx", 0),
+                                temperature=-1,  # Not available in current metrics
+                                power=-1,  # Not available in current metrics
+                            )
+                            gpus.append(gpu_status)
+                        
+                        node_status = profiler_pb2.NodeStatus(
+                            node_id=hostname,
+                            gpus=gpus
+                        )
+                        nodes.append(node_status)
+            
+            return profiler_pb2.ClusterStatusResponse(
+                success=True,
+                message="Cluster status retrieved successfully",
+                cluster_id="default",
+                nodes=nodes
+            )
+        except Exception as e:
+            logger.error(f"Error reading cluster status: {e}")
+            return profiler_pb2.ClusterStatusResponse(
+                success=False,
+                message=f"Failed to read cluster status: {str(e)}",
+                cluster_id="default",
+                nodes=[]
+            )
+
+    async def ReadNodeStatus(self, request: profiler_pb2.ReadNodeStatusRequest, context):
+        """Read status for a specific node"""
+        try:
+            target_hostname = request.node_id
+            
+            async with state.data_lock:
+                # Find the client with matching hostname
+                target_client_id = None
+                for client_id, hostname in state.connected_clients.items():
+                    if hostname == target_hostname:
+                        target_client_id = client_id
+                        break
+                
+                if not target_client_id or target_client_id not in state.latest_client_data:
+                    return profiler_pb2.NodeStatusResponse(
+                        success=False,
+                        message=f"Node {target_hostname} not found or no data available",
+                        node_status=profiler_pb2.NodeStatus()
+                    )
+                
+                client_data = state.latest_client_data[target_client_id]
+                gpus = []
+                
+                for gpu_metric in client_data.get("gpus_metrics", []):
+                    gpu_status = profiler_pb2.GPUStatus(
+                        gpu_id=gpu_metric["physical_idx"],
+                        gpu_name=gpu_metric.get("name", f"GPU_{gpu_metric['physical_idx']}"),
+                        utilization=gpu_metric["gpu_util"],
+                        memory_used=gpu_metric.get("mem_used_mb", int(gpu_metric.get("mem_util", 0) * gpu_metric.get("mem_total_mb", 16384))),
+                        memory_total=gpu_metric.get("mem_total_mb", 16384),  # Use actual value or fallback to 16GB
+                        dram_bandwidth=gpu_metric.get("dram_bw_gbps_rx", 0) + gpu_metric.get("dram_bw_gbps_tx", 0),
+                        nvlink_bandwidth=gpu_metric.get("nvlink_bw_gbps_rx", 0) + gpu_metric.get("nvlink_bw_gbps_tx", 0),
+                        temperature=-1,
+                        power=-1,
+                    )
+                    gpus.append(gpu_status)
+                
+                node_status = profiler_pb2.NodeStatus(
+                    node_id=target_hostname,
+                    gpus=gpus
+                )
+            
+            return profiler_pb2.NodeStatusResponse(
+                success=True,
+                message=f"Node status for {target_hostname} retrieved successfully",
+                node_status=node_status
+            )
+        except Exception as e:
+            logger.error(f"Error reading node status: {e}")
+            return profiler_pb2.NodeStatusResponse(
+                success=False,
+                message=f"Failed to read node status: {str(e)}",
+                node_status=profiler_pb2.NodeStatus()
+            )
+
+    async def SetBandwidthProfiling(self, request: profiler_pb2.SetBandwidthProfilingRequest, context):
+        """Enable or disable bandwidth profiling"""
+        try:
+            state.enable_bandwidth_profiling = request.enable
+            status = "enabled" if request.enable else "disabled"
+            logger.info(f"Bandwidth profiling {status}")
+            
+            return profiler_pb2.SetBandwidthProfilingResponse(
+                success=True,
+                message=f"Bandwidth profiling {status} successfully"
+            )
+        except Exception as e:
+            logger.error(f"Error setting bandwidth profiling: {e}")
+            return profiler_pb2.SetBandwidthProfilingResponse(
+                success=False,
+                message=f"Failed to set bandwidth profiling: {str(e)}"
+            )
+
+    async def SetNVLinkProfiling(self, request: profiler_pb2.SetNVLinkProfilingRequest, context):
+        """Enable or disable NVLink profiling"""
+        try:
+            state.enable_nvlink_profiling = request.enable
+            status = "enabled" if request.enable else "disabled"
+            logger.info(f"NVLink profiling {status}")
+            
+            return profiler_pb2.SetNVLinkProfilingResponse(
+                success=True,
+                message=f"NVLink profiling {status} successfully"
+            )
+        except Exception as e:
+            logger.error(f"Error setting NVLink profiling: {e}")
+            return profiler_pb2.SetNVLinkProfilingResponse(
+                success=False,
+                message=f"Failed to set NVLink profiling: {str(e)}"
+            )
+
 
 def log_total_gpus():
     total_gpus = sum(len(gpus) for gpus in state.client_gpu_info.values())

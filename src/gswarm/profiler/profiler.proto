@@ -85,6 +85,60 @@ message StopProfilingResponse {
 
 message Empty {}
 
+// Missing message types
+message ReadClusterStatusRequest {}
+
+message ReadNodeStatusRequest {
+    string node_id = 1;
+}
+
+message NodeStatus {
+    string node_id = 1;
+    repeated GPUStatus gpus = 2;
+}
+
+message GPUStatus {
+    int32 gpu_id = 1;
+    double utilization = 2;
+    int64 memory_used = 3;
+    int64 memory_total = 4;
+    double dram_bandwidth = 5;
+    double nvlink_bandwidth = 6;
+    double temperature = 7;
+    double power = 8;
+}
+
+message ClusterStatusResponse {
+    bool success = 1;
+    string message = 2;
+    string cluster_id = 3;
+    repeated NodeStatus nodes = 4;
+}
+
+message NodeStatusResponse {
+    bool success = 1;
+    string message = 2;
+    NodeStatus node_status = 3;
+}
+
+message SetBandwidthProfilingRequest {
+    bool enable = 1;
+}
+
+message SetBandwidthProfilingResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+message SetNVLinkProfilingRequest {
+    bool enable = 1;
+}
+
+message SetNVLinkProfilingResponse {
+    bool success = 1;
+    string message = 2;
+}
+
 // Service definition
 service ProfilerService {
     // Client connects and sends initial info, then streams metrics
@@ -98,4 +152,10 @@ service ProfilerService {
     rpc StartProfiling(StartProfilingRequest) returns (StartProfilingResponse);
     rpc StopProfiling(StopProfilingRequest) returns (StopProfilingResponse);
     rpc Exit(Empty) returns (Empty);
+    
+    // Missing service methods
+    rpc ReadClusterStatus(ReadClusterStatusRequest) returns (ClusterStatusResponse);
+    rpc ReadNodeStatus(ReadNodeStatusRequest) returns (NodeStatusResponse);
+    rpc SetBandwidthProfiling(SetBandwidthProfilingRequest) returns (SetBandwidthProfilingResponse);
+    rpc SetNVLinkProfiling(SetNVLinkProfilingRequest) returns (SetNVLinkProfilingResponse);
 } 

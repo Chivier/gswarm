@@ -287,43 +287,43 @@ def read(
                 table = Table(title=f"{'Cluster' if not node else 'Node'} Status")
 
                 table.add_column("Node ID", style="cyan")
+                table.add_column("Device Type", style="magenta")
                 table.add_column("GPU ID", style="green")
                 table.add_column("GPU Util %", justify="right")
                 table.add_column("Memory Used", justify="right")
                 table.add_column("Memory Total", justify="right")
                 table.add_column("DRAM BW %", justify="right")
                 table.add_column("NVLink BW", justify="right")
-                table.add_column("Temperature", justify="right")
-                table.add_column("Power", justify="right")
 
                 # Process each node's data
                 for node_status in nodes_data:
                     node_data = {"node_id": node_status.node_id, "gpus": []}
 
                     for gpu in node_status.gpus:
+                        # Use a simple fallback for GPU name since we can't access head node state from CLI
+                        gpu_name = f"GPU_{gpu.gpu_id}"
+                        
                         gpu_data = {
                             "gpu_id": gpu.gpu_id,
+                            "device_type": gpu_name,
                             "utilization": gpu.utilization,
                             "memory_used": gpu.memory_used,
                             "memory_total": gpu.memory_total,
                             "dram_bandwidth": gpu.dram_bandwidth,
                             "nvlink_bandwidth": gpu.nvlink_bandwidth,
-                            "temperature": gpu.temperature,
-                            "power": gpu.power,
                         }
                         node_data["gpus"].append(gpu_data)
 
                         # Add row to table
                         table.add_row(
                             node_status.node_id,
+                            gpu_name,  # Use the fallback name
                             str(gpu.gpu_id),
                             f"{gpu.utilization:.1f}%" if gpu.utilization >= 0 else "N/A",
-                            f"{gpu.memory_used / 1024:.1f} GB" if gpu.memory_used >= 0 else "N/A",
-                            f"{gpu.memory_total / 1024:.1f} GB" if gpu.memory_total >= 0 else "N/A",
+                            f"{gpu.memory_used:.0f} MB" if gpu.memory_used >= 0 else "N/A",
+                            f"{gpu.memory_total:.0f} MB" if gpu.memory_total >= 0 else "N/A",
                             f"{gpu.dram_bandwidth:.1f}%" if gpu.dram_bandwidth >= 0 else "N/A",
                             f"{gpu.nvlink_bandwidth / 1024:.1f} GB/s" if gpu.nvlink_bandwidth >= 0 else "N/A",
-                            f"{gpu.temperature}°C" if gpu.temperature >= 0 else "N/A",
-                            f"{gpu.power:.1f}W" if gpu.power >= 0 else "N/A",
                         )
 
                     status_data["nodes"].append(node_data)

@@ -8,6 +8,8 @@ from typing import Optional
 from dataclasses import dataclass
 from loguru import logger
 
+# Global variable to store custom config path
+_custom_config_path: Optional[Path] = None
 
 @dataclass
 class HostConfig:
@@ -42,8 +44,21 @@ class GSwarmConfig:
         self.client = client or ClientConfig()
 
 
+def set_config_path(config_path: Optional[str]) -> None:
+    """Set the path to the configuration file"""
+    global _custom_config_path
+    if config_path:
+        _custom_config_path = Path(config_path)
+        logger.info(f"Using custom configuration file: {_custom_config_path}")
+    else:
+        _custom_config_path = None
+
+
 def get_config_path() -> Path:
     """Get path to the configuration file"""
+    global _custom_config_path
+    if _custom_config_path:
+        return _custom_config_path
     return Path.home() / ".gswarm.conf"
 
 
@@ -83,9 +98,10 @@ def load_config() -> GSwarmConfig:
             logger.warning(f"Error loading config file {config_path}: {e}")
             logger.info("Using default configuration")
 
-    # Create default config
+    # Create default config if using ~/.gswarm.conf and it doesn't exist
     config = GSwarmConfig()
-    save_config(config)
+    if not _custom_config_path:  # Only auto-save if using default path
+        save_config(config)
     return config
 
 
@@ -94,6 +110,9 @@ def save_config(config: GSwarmConfig) -> bool:
     config_path = get_config_path()
 
     try:
+        # Create directory if it doesn't exist
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        
         data = {
             "host": {
                 "huggingface_cache_dir": config.host.huggingface_cache_dir,

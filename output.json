@@ -1,0 +1,91 @@
+{
+  "timestamp": "2025-06-16T17:07:22.526162",
+  "cluster_id": "default",
+  "nodes": [
+    {
+      "node_id": "gala1-G482-Z54-00",
+      "gpus": [
+        {
+          "gpu_id": 0,
+          "utilization": 0.0,
+          "memory_used": 5,
+          "memory_total": 16384,
+          "dram_bandwidth": 0.0,
+          "nvlink_bandwidth": 0.0,
+          "temperature": -1.0,
+          "power": -1.0
+        },
+        {
+          "gpu_id": 1,
+          "utilization": 0.0,
+          "memory_used": 1,
+          "memory_total": 16384,
+          "dram_bandwidth": 0.0,
+          "nvlink_bandwidth": 0.0,
+          "temperature": -1.0,
+          "power": -1.0
+        },
+        {
+          "gpu_id": 2,
+          "utilization": 0.0,
+          "memory_used": 0,
+          "memory_total": 16384,
+          "dram_bandwidth": 0.0,
+          "nvlink_bandwidth": 0.0,
+          "temperature": -1.0,
+          "power": -1.0
+        },
+        {
+          "gpu_id": 3,
+          "utilization": 0.0,
+          "memory_used": 0,
+          "memory_total": 16384,
+          "dram_bandwidth": 0.0,
+          "nvlink_bandwidth": 0.0,
+          "temperature": -1.0,
+          "power": -1.0
+        },
+        {
+          "gpu_id": 4,
+          "utilization": 0.0,
+          "memory_used": 0,
+          "memory_total": 16384,
+          "dram_bandwidth": 0.0,
+          "nvlink_bandwidth": 0.0,
+          "temperature": -1.0,
+          "power": -1.0
+        },
+        {
+          "gpu_id": 5,
+          "utilization": 0.0,
+          "memory_used": 0,
+          "memory_total": 16384,
+          "dram_bandwidth": 0.0,
+          "nvlink_bandwidth": 0.0,
+          "temperature": -1.0,
+          "power": -1.0
+        },
+        {
+          "gpu_id": 6,
+          "utilization": 0.0,
+          "memory_used": 0,
+          "memory_total": 16384,
+          "dram_bandwidth": 0.0,
+          "nvlink_bandwidth": 0.0,
+          "temperature": -1.0,
+          "power": -1.0
+        },
+        {
+          "gpu_id": 7,
+          "utilization": 0.0,
+          "memory_used": 0,
+          "memory_total": 16384,
+          "dram_bandwidth": 0.0,
+          "nvlink_bandwidth": 0.0,
+          "temperature": -1.0,
+          "power": -1.0
+        }
+      ]
+    }
+  ]
+}

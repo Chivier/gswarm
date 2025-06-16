@@ -119,6 +119,8 @@ async def collect_gpu_metrics(enable_bandwidth: bool) -> Dict[str, Any]:
                 "name": device.name(),
                 "gpu_util": 0.0,
                 "mem_util": 0.0,
+                "mem_used_mb": 0,
+                "mem_total_mb": 0,
                 "dram_bw_gbps_rx": 0.0,
                 "dram_bw_gbps_tx": 0.0,
                 "nvlink_bw_gbps_rx": 0.0,
@@ -134,6 +136,39 @@ async def collect_gpu_metrics(enable_bandwidth: bool) -> Dict[str, Any]:
                 gpu_metric["mem_util"] = device.memory_percent() / 100.0
             except (AttributeError, NotImplementedError):
                 logger.debug(f"Memory utilization not available for device {i}")
+
+            # Get actual memory values from nvitop
+            try:
+                memory_info = device.memory()
+                if memory_info is not None:
+                    gpu_metric["mem_used_mb"] = memory_info.used // (1024 * 1024)  # Convert to MB
+                    gpu_metric["mem_total_mb"] = memory_info.total // (1024 * 1024)  # Convert to MB
+                else:
+                    # Fallback calculation using percentage if direct memory access fails
+                    if gpu_metric["mem_util"] > 0:
+                        # Try to get from torch as fallback
+                        try:
+                            import torch
+                            if torch.cuda.is_available() and i < torch.cuda.device_count():
+                                props = torch.cuda.get_device_properties(i)
+                                gpu_metric["mem_total_mb"] = props.total_memory // (1024 * 1024)
+                                gpu_metric["mem_used_mb"] = int(gpu_metric["mem_total_mb"] * gpu_metric["mem_util"])
+                        except ImportError:
+                            pass
+            except (AttributeError, NotImplementedError):
+                # Final fallback to torch if available
+                try:
+                    import torch
+                    if torch.cuda.is_available() and i < torch.cuda.device_count():
+                        props = torch.cuda.get_device_properties(i)
+                        gpu_metric["mem_total_mb"] = props.total_memory // (1024 * 1024)
+                        # Try to get current memory usage from torch
+                        try:
+                            gpu_metric["mem_used_mb"] = torch.cuda.memory_allocated(i) // (1024 * 1024)
+                        except:
+                            gpu_metric["mem_used_mb"] = int(gpu_metric["mem_total_mb"] * gpu_metric["mem_util"])
+                except ImportError:
+                    logger.debug(f"Neither nvitop memory info nor torch available for device {i}")
 
             if enable_bandwidth:
                 try:
@@ -164,6 +199,8 @@ async def collect_gpu_metrics(enable_bandwidth: bool) -> Dict[str, Any]:
                     "name": device.name() if hasattr(device, "name") else f"GPU_{i}",
                     "gpu_util": 0.0,
                     "mem_util": 0.0,
+                    "mem_used_mb": 0,
+                    "mem_total_mb": 0,
                     "dram_bw_gbps_rx": 0.0,
                     "dram_bw_gbps_tx": 0.0,
                     "nvlink_bw_gbps_rx": 0.0,

@@ -40,9 +40,6 @@ from gswarm.utils.config import load_config, get_model_cache_dir, get_dram_cache
 from gswarm.utils.cache import model_storage, scan_all_models, save_model_to_disk, load_safetensors_to_dram
 
 
-# Load configuration
-config = load_config()
-
 app = FastAPI(title="GSwarm Model Manager", description="Simplified Model Management API", version="0.4.0")
 
 
@@ -1306,7 +1303,8 @@ def create_app(
     host: Optional[str] = None, port: Optional[int] = None, model_port: Optional[int] = None, **kwargs
 ) -> FastAPI:
     """Factory function to create and return the FastAPI app instance"""
-    global config
+    # Load config only when creating the app
+    config = load_config()
 
     # Override config with CLI parameters if provided
     if host is not None or port is not None or model_port is not None:

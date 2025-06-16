@@ -14,14 +14,14 @@ def create_client_app(head_address: str, enable_bandwidth: bool, lifespan_func) 
         await asyncio.sleep(0.5)  # Small delay to ensure response is sent
         os.kill(pid, signal.SIGINT)
 
-    @app.get("/shutdown", summary="Graceful shutdown")
-    async def shutdown():
-        """Endpoint to gracefully shutdown the client"""
+    @app.get("/disconnect", summary="Graceful disconnect")
+    async def disconnect():
+        """Endpoint to gracefully disconnect the client"""
         pid = os.getpid()
-        logger.info(f"Shutdown requested for client with PID {pid}")
+        logger.info(f"Disconnect requested for client with PID {pid}")
 
         # Return response first, then shutdown
-        response = {"message": "Client shutdown initiated"}
+        response = {"message": "Client disconnect initiated"}
 
         # Schedule shutdown after response is sent
         asyncio.create_task(delayed_shutdown(pid))

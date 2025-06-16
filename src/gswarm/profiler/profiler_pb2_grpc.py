@@ -5,7 +5,7 @@ import warnings
 
 from gswarm.profiler import profiler_pb2 as profiler__pb2
 
-GRPC_GENERATED_VERSION = '1.70.0'
+GRPC_GENERATED_VERSION = '1.71.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -65,6 +65,26 @@ class ProfilerServiceStub(object):
                 request_serializer=profiler__pb2.Empty.SerializeToString,
                 response_deserializer=profiler__pb2.Empty.FromString,
                 _registered_method=True)
+        self.ReadClusterStatus = channel.unary_unary(
+                '/gswarm_profiler.ProfilerService/ReadClusterStatus',
+                request_serializer=profiler__pb2.ReadClusterStatusRequest.SerializeToString,
+                response_deserializer=profiler__pb2.ClusterStatusResponse.FromString,
+                _registered_method=True)
+        self.ReadNodeStatus = channel.unary_unary(
+                '/gswarm_profiler.ProfilerService/ReadNodeStatus',
+                request_serializer=profiler__pb2.ReadNodeStatusRequest.SerializeToString,
+                response_deserializer=profiler__pb2.NodeStatusResponse.FromString,
+                _registered_method=True)
+        self.SetBandwidthProfiling = channel.unary_unary(
+                '/gswarm_profiler.ProfilerService/SetBandwidthProfiling',
+                request_serializer=profiler__pb2.SetBandwidthProfilingRequest.SerializeToString,
+                response_deserializer=profiler__pb2.SetBandwidthProfilingResponse.FromString,
+                _registered_method=True)
+        self.SetNVLinkProfiling = channel.unary_unary(
+                '/gswarm_profiler.ProfilerService/SetNVLinkProfiling',
+                request_serializer=profiler__pb2.SetNVLinkProfilingRequest.SerializeToString,
+                response_deserializer=profiler__pb2.SetNVLinkProfilingResponse.FromString,
+                _registered_method=True)
 
 
 class ProfilerServiceServicer(object):
@@ -110,6 +130,31 @@ class ProfilerServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ReadClusterStatus(self, request, context):
+        """Missing service methods
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ReadNodeStatus(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetBandwidthProfiling(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetNVLinkProfiling(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ProfilerServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -142,6 +187,26 @@ def add_ProfilerServiceServicer_to_server(servicer, server):
                     servicer.Exit,
                     request_deserializer=profiler__pb2.Empty.FromString,
                     response_serializer=profiler__pb2.Empty.SerializeToString,
+            ),
+            'ReadClusterStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.ReadClusterStatus,
+                    request_deserializer=profiler__pb2.ReadClusterStatusRequest.FromString,
+                    response_serializer=profiler__pb2.ClusterStatusResponse.SerializeToString,
+            ),
+            'ReadNodeStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.ReadNodeStatus,
+                    request_deserializer=profiler__pb2.ReadNodeStatusRequest.FromString,
+                    response_serializer=profiler__pb2.NodeStatusResponse.SerializeToString,
+            ),
+            'SetBandwidthProfiling': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetBandwidthProfiling,
+                    request_deserializer=profiler__pb2.SetBandwidthProfilingRequest.FromString,
+                    response_serializer=profiler__pb2.SetBandwidthProfilingResponse.SerializeToString,
+            ),
+            'SetNVLinkProfiling': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetNVLinkProfiling,
+                    request_deserializer=profiler__pb2.SetNVLinkProfilingRequest.FromString,
+                    response_serializer=profiler__pb2.SetNVLinkProfilingResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -307,6 +372,114 @@ class ProfilerService(object):
             '/gswarm_profiler.ProfilerService/Exit',
             profiler__pb2.Empty.SerializeToString,
             profiler__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ReadClusterStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/gswarm_profiler.ProfilerService/ReadClusterStatus',
+            profiler__pb2.ReadClusterStatusRequest.SerializeToString,
+            profiler__pb2.ClusterStatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ReadNodeStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/gswarm_profiler.ProfilerService/ReadNodeStatus',
+            profiler__pb2.ReadNodeStatusRequest.SerializeToString,
+            profiler__pb2.NodeStatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetBandwidthProfiling(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/gswarm_profiler.ProfilerService/SetBandwidthProfiling',
+            profiler__pb2.SetBandwidthProfilingRequest.SerializeToString,
+            profiler__pb2.SetBandwidthProfilingResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetNVLinkProfiling(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/gswarm_profiler.ProfilerService/SetNVLinkProfiling',
+            profiler__pb2.SetNVLinkProfilingRequest.SerializeToString,
+            profiler__pb2.SetNVLinkProfilingResponse.FromString,
             options,
             channel_credentials,
             insecure,

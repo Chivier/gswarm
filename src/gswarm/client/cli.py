@@ -7,7 +7,7 @@ import sys
 import platform
 from typing import Optional
 from loguru import logger
-from ..utils.connection_info import get_connection_file, save_host_connection, clear_connection_info
+from ..utils.connection_info import get_connection_file, save_host_connection, clear_connection_info, get_connection_info
 from ..utils.daemonizer import daemonize, get_pid_file, check_pid_file_exists, get_log_filepath
 from .client_common import create_client_app, start_client
 
@@ -80,9 +80,13 @@ def connect(
 ):
     """Connect this node as a client to the host"""
 
-    # Check if already connected
-    if client_state.is_connected:
-        logger.warning(f"Already connected to {client_state.host_address}. Use 'disconnect' first.")
+    # Check if already connected - check both in-memory state AND persisted connection info
+    connection_info = get_connection_info()
+    if client_state.is_connected or connection_info:
+        if connection_info:
+            logger.warning(f"Already connected to {connection_info.host_address}:{connection_info.profiler_grpc_port}. Use 'disconnect' first.")
+        else:
+            logger.warning(f"Already connected to {client_state.host_address}. Use 'disconnect' first.")
         return
 
     logger.info(f"Connecting to host at {host_address}")
@@ -158,43 +162,79 @@ def connect(
 def disconnect():
     """Disconnect from the host"""
 
-    if not client_state.is_connected:
-        logger.info("Not connected to any host")
+    # Check for persisted connection info first (daemon mode)
+    connection_info = get_connection_info()
+    
+    if connection_info:
+        logger.info(f"Disconnecting from host at {connection_info.host_address}:{connection_info.profiler_grpc_port}")
+        
+        # If we have a PID, try to terminate the daemon process
+        if connection_info.pid:
+            try:
+                import psutil
+                if psutil.pid_exists(connection_info.pid):
+                    logger.info(f"Terminating client daemon process (PID {connection_info.pid})")
+                    process = psutil.Process(connection_info.pid)
+                    process.terminate()
+                    # Wait a bit for graceful termination
+                    try:
+                        process.wait(timeout=5)
+                        logger.info("Client daemon terminated gracefully")
+                    except psutil.TimeoutExpired:
+                        logger.warning("Client daemon did not terminate gracefully, forcing termination")
+                        process.kill()
+                        process.wait()
+                        logger.info("Client daemon forcefully terminated")
+                else:
+                    logger.info("Client daemon process not found (may have already exited)")
+            except ImportError:
+                logger.warning("psutil not available, cannot terminate daemon process")
+                logger.info("You may need to manually kill the client process")
+            except Exception as e:
+                logger.error(f"Error terminating daemon process: {e}")
+        
+        # Clear connection information
+        clear_connection_info()
+        logger.info("Successfully disconnected from host")
         return
+    
+    # Fallback: check in-memory state (blocking mode)
+    elif client_state.is_connected:
+        logger.info(f"Disconnecting from host at {client_state.host_address}")
 
-    logger.info(f"Disconnecting from host at {client_state.host_address}")
+        # Disconnect from model service if connected
+        if client_state.model_client:
+            try:
+                logger.info("Disconnecting from model service...")
+                client_state.model_client = None
+            except Exception as e:
+                logger.debug(f"Error disconnecting from model service: {e}")
 
-    # Disconnect from model service if connected
-    if client_state.model_client:
-        try:
-            logger.info("Disconnecting from model service...")
-            client_state.model_client = None
-        except Exception as e:
-            logger.debug(f"Error disconnecting from model service: {e}")
+        # Signal shutdown to any running threads
+        client_state.shutdown_event.set()
 
-    # Signal shutdown to any running threads
-    client_state.shutdown_event.set()
+        # Wait for client thread to finish gracefully
+        if client_state.client_thread and client_state.client_thread.is_alive():
+            logger.info("Waiting for client thread to stop...")
+            try:
+                # Give the thread some time to stop gracefully
+                client_state.client_thread.join(timeout=5.0)
+                if client_state.client_thread.is_alive():
+                    logger.warning("Client thread did not stop gracefully within timeout")
+                else:
+                    logger.info("Client thread stopped gracefully")
+            except Exception as e:
+                logger.error(f"Error waiting for client thread: {e}")
 
-    # Wait for client thread to finish gracefully
-    if client_state.client_thread and client_state.client_thread.is_alive():
-        logger.info("Waiting for client thread to stop...")
-        try:
-            # Give the thread some time to stop gracefully
-            client_state.client_thread.join(timeout=5.0)
-            if client_state.client_thread.is_alive():
-                logger.warning("Client thread did not stop gracefully within timeout")
-            else:
-                logger.info("Client thread stopped gracefully")
-        except Exception as e:
-            logger.error(f"Error waiting for client thread: {e}")
+        # Reset client state
+        client_state.reset()
 
-    # Reset client state
-    client_state.reset()
+        # Clear connection information
+        clear_connection_info()
 
-    # Clear connection information
-    clear_connection_info()
-
-    logger.info("Successfully disconnected from host")
+        logger.info("Successfully disconnected from host")
+    else:
+        logger.info("Not connected to any host")
 
 
 @app.command()
@@ -203,71 +243,99 @@ def status():
     logger.info("Client Node Status:")
     logger.info("=" * 50)
 
-    if not client_state.is_connected:
+    # Check for persisted connection info first
+    connection_info = get_connection_info()
+    
+    # If we have connection info, we're potentially connected
+    if connection_info:
+        logger.info("Status: CONNECTED")
+        logger.info(f"Host Address: {connection_info.host_address}:{connection_info.profiler_grpc_port}")
+        logger.info(f"Node ID: {connection_info.node_id}")
+        logger.info(f"Connected At: {connection_info.connected_at}")
+        
+        if connection_info.pid:
+            # Check if the client process is still running
+            try:
+                import psutil
+                if psutil.pid_exists(connection_info.pid):
+                    logger.info(f"Client Process: running (PID {connection_info.pid})")
+                else:
+                    logger.info(f"Client Process: stopped (PID {connection_info.pid} not found)")
+            except ImportError:
+                logger.info(f"Client Process: PID {connection_info.pid} (psutil not available for verification)")
+        
+        # Try to check actual connection to host
+        try:
+            import grpc
+            from ..profiler import profiler_pb2_grpc, profiler_pb2
+            
+            logger.info("\nHost Connection Test:")
+            logger.info("-" * 30)
+            
+            async def test_connection():
+                try:
+                    host_address = f"{connection_info.host_address}:{connection_info.profiler_grpc_port}"
+                    async with grpc.aio.insecure_channel(host_address) as channel:
+                        stub = profiler_pb2_grpc.ProfilerServiceStub(channel)
+                        status_response = await stub.GetStatus(profiler_pb2.Empty())
+                        logger.info(f"Host Status: reachable")
+                        logger.info(f"Host Frequency: {status_response.freq}ms")
+                        logger.info(
+                            f"Host Bandwidth Profiling: {'enabled' if status_response.enable_bandwidth_profiling else 'disabled'}"
+                        )
+                        logger.info(f"Connected Clients: {len(status_response.connected_clients)}")
+                        
+                        # Check if this client is in the connected clients list
+                        if connection_info.node_id in status_response.connected_clients:
+                            logger.info(f"This Client: registered with host")
+                        else:
+                            logger.info(f"This Client: not found in host's client list")
+                        
+                        return True
+                except Exception as e:
+                    logger.warning(f"Host Status: unreachable ({e})")
+                    return False
+            
+            import asyncio
+            
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(test_connection())
+            finally:
+                loop.close()
+                
+        except Exception as e:
+            logger.debug(f"Could not test host connection: {e}")
+            
+    elif client_state.is_connected:
+        # Fallback to in-memory state (for blocking mode)
+        logger.info("Status: CONNECTED")
+        logger.info(f"Host Address: {client_state.host_address}")
+        logger.info(f"Node ID: {client_state.node_id}")
+        logger.info(f"Resilient Mode: {'enabled' if client_state.resilient_mode else 'disabled'}")
+
+        if client_state.enable_bandwidth is not None:
+            logger.info(f"Bandwidth Profiling: {'enabled' if client_state.enable_bandwidth else 'disabled'}")
+        else:
+            logger.info("Bandwidth Profiling: configured by host")
+
+        # Check thread status
+        if client_state.client_thread:
+            thread_status = "alive" if client_state.client_thread.is_alive() else "stopped"
+            logger.info(f"Client Thread: {thread_status}")
+
+        # Check model service status
+        if client_state.model_client:
+            try:
+                if client_state.model_client.heartbeat():
+                    logger.info("Model Service: connected")
+                else:
+                    logger.info("Model Service: connection lost")
+            except Exception:
+                logger.info("Model Service: connection error")
+        else:
+            logger.info("Model Service: not registered")
+    else:
         logger.info("Status: DISCONNECTED")
         logger.info("No active connection to host")
-        return
-
-    logger.info("Status: CONNECTED")
-    logger.info(f"Host Address: {client_state.host_address}")
-    logger.info(f"Node ID: {client_state.node_id}")
-    logger.info(f"Resilient Mode: {'enabled' if client_state.resilient_mode else 'disabled'}")
-
-    if client_state.enable_bandwidth is not None:
-        logger.info(f"Bandwidth Profiling: {'enabled' if client_state.enable_bandwidth else 'disabled'}")
-    else:
-        logger.info("Bandwidth Profiling: configured by host")
-
-    # Check thread status
-    if client_state.client_thread:
-        thread_status = "alive" if client_state.client_thread.is_alive() else "stopped"
-        logger.info(f"Client Thread: {thread_status}")
-
-    # Check model service status
-    if client_state.model_client:
-        try:
-            if client_state.model_client.heartbeat():
-                logger.info("Model Service: connected")
-            else:
-                logger.info("Model Service: connection lost")
-        except Exception:
-            logger.info("Model Service: connection error")
-    else:
-        logger.info("Model Service: not registered")
-
-    # Try to check actual connection to host
-    try:
-        from ..utils.service_discovery import discover_profiler_address
-        import grpc
-        from ..profiler import profiler_pb2_grpc, profiler_pb2
-
-        # Try to connect and get status from host
-        logger.info("\nHost Connection Test:")
-        logger.info("-" * 30)
-
-        async def test_connection():
-            try:
-                async with grpc.aio.insecure_channel(client_state.host_address) as channel:
-                    stub = profiler_pb2_grpc.ProfilerServiceStub(channel)
-                    status_response = await stub.GetStatus(profiler_pb2.Empty())
-                    logger.info(f"Host Status: reachable")
-                    logger.info(f"Host Frequency: {status_response.freq}ms")
-                    logger.info(
-                        f"Host Bandwidth Profiling: {'enabled' if status_response.enable_bandwidth_profiling else 'disabled'}"
-                    )
-                    return True
-            except Exception as e:
-                logger.warning(f"Host Status: unreachable ({e})")
-                return False
-
-        import asyncio
-
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(test_connection())
-        finally:
-            loop.close()
-
-    except Exception as e:
-        logger.debug(f"Could not test host connection: {e}")

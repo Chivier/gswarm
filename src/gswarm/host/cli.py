@@ -21,13 +21,18 @@ SERVICE_PORTS = {"profiler_grpc": 8090, "profiler_http": 8091, "model_api": 9010
 
 def get_process_using_port(port: int) -> Optional[psutil.Process]:
     """Find process using a specific port"""
-    for proc in psutil.process_iter(["pid", "name", "connections"]):
-        try:
-            for conn in proc.info["connections"] or []:
-                if conn.laddr.port == port:
-                    return psutil.Process(proc.info["pid"])
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            continue
+    try:
+        for proc in psutil.process_iter(["pid", "name"]):
+            try:
+                # Get connections separately using the connections() method
+                connections = proc.connections(kind="inet")
+                for conn in connections:
+                    if hasattr(conn, "laddr") and conn.laddr.port == port:
+                        return proc
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+    except Exception as e:
+        logger.debug(f"Error checking processes: {e}")
     return None
 
 

@@ -1,0 +1,31 @@
+# GSwarm Configuration File
+# Use this as a template and specify with: gswarm --yaml config.yaml
+
+host:
+  # HuggingFace cache directory
+  huggingface_cache_dir: "~/.cache/huggingface"
+  
+  # GSwarm model cache directory
+  model_cache_dir: "~/.cache/gswarm/models"
+  
+  # Model management API port
+  model_manager_port: 8101
+  
+  # GSwarm gRPC port (profiler)
+  gswarm_grpc_port: 8091
+  
+  # GSwarm HTTP API port
+  gswarm_http_port: 8090
+
+client:
+  # Host URL for client connections
+  host_url: "0.0.0.0:8091"
+  
+  # Available DRAM size in GB
+  dram_size: 16
+  
+  # Client model cache directory
+  model_cache_dir: "~/.cache/gswarm/models"
+  
+  # Unique client node identifier
+  node_id: "node1" 
