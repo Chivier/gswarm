@@ -2,6 +2,7 @@
 #
 # This workflow is triggered when a new GitHub Release is created.
 # It uses 'uv' to build the Python project and publish it to PyPI.
+# The workflow is optimized to cache the uv installation and project dependencies to speed up execution.
 
 name: Publish Python Package to PyPI
 
@@ -24,7 +25,7 @@ jobs:
       url: https://pypi.org/p/gswarm # Replace with your package name on PyPI
     permissions:
       id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
-    
+
     steps:
       - name: Checkout repository
         # Checks out your repository under $GITHUB_WORKSPACE, so your job can access it
@@ -36,15 +37,36 @@ jobs:
         with:
           python-version: "3.11" # Specify the Python version you want to use
 
+      - name: Cache uv installation
+        # Cache the uv binary to speed up subsequent workflow runs
+        id: cache-uv
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/uv
+          # 'runner.os' ensures the cache is only reused on the same operating system
+          key: ${{ runner.os }}-uv
+
       - name: Install uv
-        # Installs uv, the fast Python package installer and resolver
+        # If uv is not found in the cache, install it
+        if: steps.cache-uv.outputs.cache-hit != 'true'
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        # 'shell: bash' ensures the script runs in a bash environment
+        shell: bash
+
+      - name: Cache Python virtual environment
+        # Cache the virtual environment created by uv
+        id: cache-venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          # The cache will be invalidated when 'pyproject.toml' or 'requirements.txt' files change
+          # The 'hashFiles' function computes a hash of the specified files
+          key: ${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'requirements.txt') }}
 
       - name: Install project dependencies
-        # Use uv to sync the project dependencies from your requirements file
-        # Assumes you have a requirements.txt or that dependencies are in pyproject.toml
+        # Use uv to sync project dependencies. This step will be very fast if the cache is hit.
         run: uv sync
 
       - name: Build package
@@ -55,4 +77,3 @@ jobs:
         # Use the official PyPA action to publish the package to PyPI
         # This action uses trusted publishing, which is more secure than using API tokens
         uses: pypa/gh-action-pypi-publish@release/v1
-
