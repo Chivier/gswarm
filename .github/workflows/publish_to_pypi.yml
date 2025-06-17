@@ -1,0 +1,59 @@
+# .github/workflows/publish-to-pypi.yml
+#
+# This workflow is triggered when a new GitHub Release is created.
+# It uses 'uv' to build the Python project and publish it to PyPI.
+
+name: Publish Python Package to PyPI
+
+# Trigger the workflow on the creation of a new release
+on:
+  release:
+    types: [published]
+
+# Define the permissions required for the workflow to run
+permissions:
+  contents: read
+  id-token: write # Required for trusted publishing to PyPI
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest # Use the latest Ubuntu runner
+    environment:
+      name: pypi # Define the deployment environment
+      url: https://pypi.org/p/your-package-name # Replace with your package name on PyPI
+    
+    steps:
+      - name: Checkout repository
+        # Checks out your repository under $GITHUB_WORKSPACE, so your job can access it
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        # Sets up a Python version and adds it to the PATH
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11" # Specify the Python version you want to use
+
+      - name: Install uv
+        # Installs uv, the fast Python package installer and resolver
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install build dependencies
+        # Use uv to install the required tools for building the package
+        run: uv pip install --system --upgrade pip build
+
+      - name: Install project dependencies
+        # Use uv to sync the project dependencies from your requirements file
+        # Assumes you have a requirements.txt or that dependencies are in pyproject.toml
+        run: uv pip sync
+
+      - name: Build package
+        # Build the source distribution (sdist) and wheel files
+        run: uv run -- python -m build
+
+      - name: Publish package to PyPI
+        # Use the official PyPA action to publish the package to PyPI
+        # This action uses trusted publishing, which is more secure than using API tokens
+        uses: pypa/gh-action-pypi-publish@release/v1
