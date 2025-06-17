@@ -21,7 +21,9 @@ jobs:
     runs-on: ubuntu-latest # Use the latest Ubuntu runner
     environment:
       name: pypi # Define the deployment environment
-      url: https://pypi.org/p/your-package-name # Replace with your package name on PyPI
+      url: https://pypi.org/p/gswarm # Replace with your package name on PyPI
+    permissions:
+      id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
     
     steps:
       - name: Checkout repository
@@ -40,18 +42,14 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-      - name: Install build dependencies
-        # Use uv to install the required tools for building the package
-        run: uv pip install --system --upgrade pip build
-
       - name: Install project dependencies
         # Use uv to sync the project dependencies from your requirements file
         # Assumes you have a requirements.txt or that dependencies are in pyproject.toml
-        run: uv pip sync
+        run: uv sync
 
       - name: Build package
         # Build the source distribution (sdist) and wheel files
-        run: uv run -- python -m build
+        run: uv build
 
       - name: Publish package to PyPI
         # Use the official PyPA action to publish the package to PyPI
