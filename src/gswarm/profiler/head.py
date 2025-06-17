@@ -278,7 +278,6 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
                         for gpu_metric in client_data.get("gpus_metrics", []):
                             gpu_status = profiler_pb2.GPUStatus(
                                 gpu_id=gpu_metric["physical_idx"],
-                                gpu_name=gpu_metric.get("name", f"GPU_{gpu_metric['physical_idx']}"),
                                 utilization=gpu_metric["gpu_util"],
                                 memory_used=gpu_metric.get("mem_used_mb", int(gpu_metric.get("mem_util", 0) * gpu_metric.get("mem_total_mb", 16384))),
                                 memory_total=gpu_metric.get("mem_total_mb", 16384),  # Use actual value or fallback to 16GB
@@ -336,7 +335,6 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
                 for gpu_metric in client_data.get("gpus_metrics", []):
                     gpu_status = profiler_pb2.GPUStatus(
                         gpu_id=gpu_metric["physical_idx"],
-                        gpu_name=gpu_metric.get("name", f"GPU_{gpu_metric['physical_idx']}"),
                         utilization=gpu_metric["gpu_util"],
                         memory_used=gpu_metric.get("mem_used_mb", int(gpu_metric.get("mem_util", 0) * gpu_metric.get("mem_total_mb", 16384))),
                         memory_total=gpu_metric.get("mem_total_mb", 16384),  # Use actual value or fallback to 16GB
@@ -626,13 +624,13 @@ def run_head_node(
         logger.error(f"Port {port} is already in use on {host}")
         logger.info("Please choose a different port or stop the process using this port.")
         logger.info(f"You can find the process using: lsof -i :{port} or netstat -tulpn | grep :{port}")
-        sys.exit(1)
+        raise RuntimeError(f"Port {port} is already in use on {host}")
 
     if http_port and not check_port_availability(host, http_port):
         logger.error(f"HTTP port {http_port} is already in use on {host}")
         logger.info("Please choose a different HTTP port or stop the process using this port.")
         logger.info(f"You can find the process using: lsof -i :{http_port} or netstat -tulpn | grep :{http_port}")
-        sys.exit(1)
+        raise RuntimeError(f"HTTP port {http_port} is already in use on {host}")
 
     logger.info(f"Starting GSwarm Profiler Head Node on {host}:{port} using gRPC")
     if http_port:

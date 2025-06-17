@@ -81,7 +81,7 @@ def connect(
     """Connect this node as a client to the host"""
 
     # Check if already connected - check both in-memory state AND persisted connection info
-    connection_info = get_connection_info()
+    connection_info = get_connection_info("client")
     if client_state.is_connected or connection_info:
         if connection_info:
             logger.warning(f"Already connected to {connection_info.host_address}:{connection_info.profiler_grpc_port}. Use 'disconnect' first.")
@@ -113,6 +113,7 @@ def connect(
         profiler_http_port=port + 1,  # Assuming HTTP is on next port
         model_api_port=port + 920,  # Default offset
         node_id=node_id or platform.node(),
+        is_host=False,  # This is a client connection
     )
 
     # Update client state
@@ -163,7 +164,7 @@ def disconnect():
     """Disconnect from the host"""
 
     # Check for persisted connection info first (daemon mode)
-    connection_info = get_connection_info()
+    connection_info = get_connection_info("client")
     
     if connection_info:
         logger.info(f"Disconnecting from host at {connection_info.host_address}:{connection_info.profiler_grpc_port}")
@@ -194,7 +195,7 @@ def disconnect():
                 logger.error(f"Error terminating daemon process: {e}")
         
         # Clear connection information
-        clear_connection_info()
+        clear_connection_info("client")
         logger.info("Successfully disconnected from host")
         return
     
@@ -230,7 +231,7 @@ def disconnect():
         client_state.reset()
 
         # Clear connection information
-        clear_connection_info()
+        clear_connection_info("client")
 
         logger.info("Successfully disconnected from host")
     else:
@@ -244,7 +245,7 @@ def status():
     logger.info("=" * 50)
 
     # Check for persisted connection info first
-    connection_info = get_connection_info()
+    connection_info = get_connection_info("client")
     
     # If we have connection info, we're potentially connected
     if connection_info:

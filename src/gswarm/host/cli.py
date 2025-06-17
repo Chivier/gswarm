@@ -119,6 +119,33 @@ def start(
     enable_nvlink: bool = typer.Option(False, "--enable-nvlink", help="Enable NVLink profiling"),
 ):
     """Start the host node with all services"""
+    
+    # Check all ports before starting any service
+    ports_to_check = {
+        "Profiler gRPC": port,
+        "HTTP API": http_port,
+        "Model API": model_port
+    }
+    
+    ports_in_use = []
+    for service_name, service_port in ports_to_check.items():
+        if not check_port_availability(host, service_port):
+            process = get_process_using_port(service_port)
+            if process:
+                ports_in_use.append(f"{service_name} port {service_port} (used by PID {process.pid} - {process.name()})")
+            else:
+                ports_in_use.append(f"{service_name} port {service_port}")
+    
+    if ports_in_use:
+        logger.error("Cannot start host node - the following ports are already in use:")
+        for port_info in ports_in_use:
+            logger.error(f"  - {port_info}")
+        logger.info("\nOptions:")
+        logger.info("1. Stop the processes using these ports")
+        logger.info("2. Choose different ports with --port, --http-port, and --model-port options")
+        logger.info(f"\nTo find processes: lsof -i :{port} or netstat -tulpn | grep :{port}")
+        raise typer.Exit(1)
+    
     logger.info(f"Starting host node on {host}")
     logger.info(f"  Profiler gRPC port: {port}")
     logger.info(f"  HTTP API port: {http_port}")
@@ -132,23 +159,26 @@ def start(
     from ..model.fastapi_head import create_app as create_model_app
 
     async def run_all_services():
-        # Start profiler in background
-        # Start model service
-        import uvicorn
-
-        model_app = create_model_app(host=host, port=port, model_port=model_port)
-
-        # Create tasks for both services
-        profiler_task = asyncio.create_task(
-            asyncio.to_thread(run_profiler_head, host, port, enable_bandwidth, enable_nvlink, http_port)
-        )
-        model_server_task = asyncio.create_task(
-            uvicorn.Server(uvicorn.Config(model_app, host=host, port=model_port)).serve()
-        )
-
-        # Wait for both tasks to complete
         try:
+            # Start profiler in background
+            import uvicorn
+
+            model_app = create_model_app(host=host, port=port, model_port=model_port)
+
+            # Create tasks for both services
+            profiler_task = asyncio.create_task(
+                asyncio.to_thread(run_profiler_head, host, port, enable_bandwidth, enable_nvlink, http_port)
+            )
+            model_server_task = asyncio.create_task(
+                uvicorn.Server(uvicorn.Config(model_app, host=host, port=model_port, log_level="warning")).serve()
+            )
+
+            # Wait for both tasks to complete
             await asyncio.gather(profiler_task, model_server_task)
+            
+        except asyncio.CancelledError:
+            logger.info("Services cancelled")
+            raise
         except Exception as e:
             # Cancel remaining tasks if one fails
             profiler_task.cancel()
@@ -157,14 +187,22 @@ def start(
             raise
 
     try:
+        # Save connection info after validating ports
+        save_host_connection(
+            host=host or "localhost", 
+            profiler_grpc_port=port, 
+            profiler_http_port=http_port, 
+            model_api_port=model_port,
+            is_host=True,  # This is a host connection
+        )
+        
         asyncio.run(run_all_services())
     except KeyboardInterrupt:
         logger.info("Host node stopped")
-
-    # Add this to the start command after services are started
-    save_host_connection(
-        host=host or "localhost", profiler_grpc_port=port, profiler_http_port=http_port, model_api_port=model_port
-    )
+    except SystemExit:
+        # Don't propagate SystemExit from child processes
+        logger.error("One of the services failed to start")
+        raise typer.Exit(1)
 
 
 @app.command()

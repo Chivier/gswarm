@@ -97,11 +97,10 @@ def load_config() -> GSwarmConfig:
         except Exception as e:
             logger.warning(f"Error loading config file {config_path}: {e}")
             logger.info("Using default configuration")
-
-    # Create default config if using ~/.gswarm.conf and it doesn't exist
+    
+    # Return default config without saving if file doesn't exist
     config = GSwarmConfig()
-    if not _custom_config_path:  # Only auto-save if using default path
-        save_config(config)
+    logger.info("Using default configuration (no config file found)")
     return config
 
 

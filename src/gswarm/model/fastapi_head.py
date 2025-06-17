@@ -137,7 +137,8 @@ class HeadState:
                             shutil.copytree(model_info["local_path"], gswarm_path)
                             checkpoint_path = str(gswarm_path)
                         except Exception as e:
-                            logger.error(f"Failed to copy HF model {model_name}: {e}")
+                            # Skip this model silently if copy fails
+                            logger.debug(f"Skipping {model_name}: failed to copy from HF cache - {e}")
                             continue
                     else:
                         checkpoint_path = str(gswarm_path)
@@ -146,19 +147,14 @@ class HeadState:
                 if checkpoint_path and validate_model_path(checkpoint_path):
                     model.checkpoints["disk"] = checkpoint_path
                     model.status = ModelStatus.DISK
-                    status_msg = "✓ DISK (valid path)"
+                    self.models[model_name] = model
+                    logger.info(f"Auto-registered model: {model_name} - ✓ DISK")
                 else:
-                    if checkpoint_path:
-                        logger.warning(f"Invalid path for {model_name}: {checkpoint_path}")
-                        model.status = ModelStatus.ERROR
-                        status_msg = "✗ ERROR (invalid path)"
-                    else:
-                        status_msg = "⚠ REGISTERED (no path found)"
+                    # Skip models with invalid paths silently
+                    logger.debug(f"Skipping {model_name}: no valid model files found at {checkpoint_path}")
+                    continue
 
-                self.models[model_name] = model
-                logger.info(f"Auto-registered model: {model_name} - {status_msg}")
-
-            logger.info(f"Discovered and registered {len(discovered_models)} models")
+            logger.info(f"Discovered and registered {len(self.models)} valid models")
 
         except Exception as e:
             logger.error(f"Error during model discovery: {e}")
@@ -1279,10 +1275,10 @@ async def startup_event():
     logger.info("Starting GSwarm Model Manager...")
     logger.info(f"Model cache directory: {get_model_cache_dir()}")
     logger.info(f"DRAM cache directory: {get_dram_cache_dir()}")
-
-    # Start model discovery
-    logger.info("Starting model discovery...")
-    await state.discover_and_register_models()
+    
+    # Don't auto-discover models on the host
+    # Model discovery should happen on clients
+    logger.info("Model discovery disabled on host - models should be discovered on client nodes")
     state.discovery_completed = True
 
 
