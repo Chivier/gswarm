@@ -182,3 +182,4 @@ llama-test.pdf
 .gswarm
 .gswarm_model_data
 .gswarm_profiler_data
+output.json
