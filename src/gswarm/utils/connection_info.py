@@ -13,6 +13,7 @@ import uuid
 from loguru import logger
 import tempfile
 import atexit
+import getpass
 
 
 @dataclass
@@ -26,6 +27,7 @@ class ConnectionInfo:
     connected_at: str
     node_id: Optional[str] = None
     pid: Optional[int] = None
+    control_port: Optional[int] = None  # For client connections
     connection_type: str = "client"  # "client" or "host"
 
     def to_dict(self) -> Dict[str, Any]:
@@ -38,22 +40,24 @@ class ConnectionInfo:
 
 class ConnectionManager:
     """Manages connection information in temporary files"""
-    
+
     # Use a fixed location for connection info so all processes can find it
-    CONNECTION_DIR = Path(tempfile.gettempdir()) / "gswarm_connections"
-    
+    # FIXME: Use a more robust location if needed (e.g., user-specific directory)
+    CONNECTION_DIR = Path(tempfile.gettempdir()) / f"gswarm_connections_{getpass.getuser()}"
+
     def __init__(self, connection_type: Literal["client", "host"] = "client"):
         # Create the shared connection directory
         self.CONNECTION_DIR.mkdir(exist_ok=True)
         self.connection_type = connection_type
-        
+
         # Use node-specific connection file with type prefix
         import platform
+
         node_name = platform.node().replace("/", "_").replace(":", "_")
-        
+
         # Include connection type in filename to avoid conflicts when host and client are on same machine
         self.connection_file = self.CONNECTION_DIR / f"{connection_type}_{node_name}.json"
-        
+
         # Only register cleanup if we're the process that created the connection
         # (checked when saving)
         self._should_cleanup = False
@@ -66,11 +70,11 @@ class ConnectionManager:
             with open(self.connection_file, "w") as f:
                 json.dump(info.to_dict(), f, indent=2)
             logger.debug(f"Saved {self.connection_type} connection info to {self.connection_file}")
-            
+
             # Mark for cleanup since we created it
             self._should_cleanup = True
             atexit.register(self.cleanup)
-            
+
             return True
         except Exception as e:
             logger.error(f"Failed to save connection info: {e}")
@@ -93,7 +97,9 @@ class ConnectionManager:
 
             # Verify connection type matches
             if data.get("connection_type", "client") != self.connection_type:
-                logger.debug(f"Connection type mismatch: expected {self.connection_type}, got {data.get('connection_type')}")
+                logger.debug(
+                    f"Connection type mismatch: expected {self.connection_type}, got {data.get('connection_type')}"
+                )
                 return None
 
             # Check if the process that created this is still running
@@ -125,7 +131,7 @@ class ConnectionManager:
             if self.connection_file.exists():
                 # Only cleanup if we're the process that created it OR if the process is dead
                 should_cleanup = self._should_cleanup
-                
+
                 if not should_cleanup:
                     # Check if the creating process is dead
                     try:
@@ -137,7 +143,7 @@ class ConnectionManager:
                                 should_cleanup = True
                     except:
                         pass
-                
+
                 if should_cleanup:
                     self.connection_file.unlink()
                     logger.debug(f"Cleaned up {self.connection_type} connection info file")
@@ -177,7 +183,7 @@ _host_connection_manager = None
 def get_connection_manager(connection_type: Literal["client", "host"] = "client") -> ConnectionManager:
     """Get the appropriate connection manager based on type"""
     global _client_connection_manager, _host_connection_manager
-    
+
     if connection_type == "client":
         return _client_connection_manager
     else:
@@ -186,18 +192,19 @@ def get_connection_manager(connection_type: Literal["client", "host"] = "client"
         return _host_connection_manager
 
 
-def save_host_connection(
+def save_connection(
     host: str,
     profiler_grpc_port: int = 8090,
     profiler_http_port: int = 8091,
     model_api_port: int = 9010,
     node_id: Optional[str] = None,
+    control_port: Optional[int] = None,
     is_host: bool = False,
 ) -> bool:
     """Save host connection information"""
     connection_type = "host" if is_host else "client"
     manager = get_connection_manager(connection_type)
-    
+
     info = ConnectionInfo(
         host_address=host,
         profiler_grpc_port=profiler_grpc_port,
@@ -205,8 +212,25 @@ def save_host_connection(
         model_api_port=model_api_port,
         connected_at=datetime.now().isoformat(),
         node_id=node_id,
+        control_port=control_port,
         connection_type=connection_type,
     )
+    return manager.save_connection(info)
+
+
+def update_connection_info(key: str, value: Any, connection_type: Literal["client", "host"] = "client"):
+    """Update a specific key in the connection information"""
+    manager = get_connection_manager(connection_type)
+    info = manager.load_connection()
+
+    if info is None:
+        logger.warning(f"No existing connection info found for {connection_type}")
+        return False
+
+    # Update the specified key
+    setattr(info, key, value)
+
+    # Save the updated connection info
     return manager.save_connection(info)
 
 

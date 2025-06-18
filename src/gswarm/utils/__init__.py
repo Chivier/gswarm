@@ -28,7 +28,7 @@ from .connection_info import (
     ConnectionInfo,
     ConnectionManager,
     connection_manager,
-    save_host_connection,
+    save_connection,
     get_connection_info,
     clear_connection_info,
 )
@@ -58,7 +58,7 @@ __all__ = [
     "ConnectionInfo",
     "ConnectionManager",
     "connection_manager",
-    "save_host_connection",
+    "save_connection",
     "get_connection_info",
     "clear_connection_info",
 ]

@@ -3,6 +3,7 @@ import signal
 from fastapi import FastAPI
 from loguru import logger
 import asyncio
+from ..utils.connection_info import update_connection_info
 
 
 def create_client_app(head_address: str, enable_bandwidth: bool, lifespan_func) -> FastAPI:
@@ -44,6 +45,7 @@ def start_client(app):
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.bind(("0.0.0.0", candidate_port))
                 port = candidate_port
+                update_connection_info("control_port", port)
                 break
         except OSError:
             continue

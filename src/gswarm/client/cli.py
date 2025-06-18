@@ -7,7 +7,7 @@ import sys
 import platform
 from typing import Optional
 from loguru import logger
-from ..utils.connection_info import get_connection_file, save_host_connection, clear_connection_info, get_connection_info
+from ..utils.connection_info import get_connection_file, save_connection, clear_connection_info, get_connection_info
 from ..utils.daemonizer import daemonize, get_pid_file, check_pid_file_exists, get_log_filepath
 from .client_common import create_client_app, start_client
 
@@ -84,7 +84,9 @@ def connect(
     connection_info = get_connection_info("client")
     if client_state.is_connected or connection_info:
         if connection_info:
-            logger.warning(f"Already connected to {connection_info.host_address}:{connection_info.profiler_grpc_port}. Use 'disconnect' first.")
+            logger.warning(
+                f"Already connected to {connection_info.host_address}:{connection_info.profiler_grpc_port}. Use 'disconnect' first."
+            )
         else:
             logger.warning(f"Already connected to {client_state.host_address}. Use 'disconnect' first.")
         return
@@ -105,16 +107,6 @@ def connect(
     else:
         host = host_address
         port = 8090
-
-    # Save connection info
-    save_host_connection(
-        host=host,
-        profiler_grpc_port=port,
-        profiler_http_port=port + 1,  # Assuming HTTP is on next port
-        model_api_port=port + 920,  # Default offset
-        node_id=node_id or platform.node(),
-        is_host=False,  # This is a client connection
-    )
 
     # Update client state
     client_state.host_address = host_address
@@ -153,6 +145,16 @@ def connect(
     client_state.client_thread.start()
     client_state.is_connected = True
 
+    # Save connection info after daemonizing to prevent cleanup function run before daemonization
+    save_connection(
+        host=host,
+        profiler_grpc_port=port,
+        profiler_http_port=port + 1,  # Assuming HTTP is on next port
+        model_api_port=port + 920,  # Default offset
+        node_id=node_id or platform.node(),
+        is_host=False,  # This is a client connection
+    )
+
     logger.info("Client started successfully. Use 'gswarm client status' to check connection.")
     logger.info("Use 'gswarm client disconnect' to stop the client.")
 
@@ -165,14 +167,25 @@ def disconnect():
 
     # Check for persisted connection info first (daemon mode)
     connection_info = get_connection_info("client")
-    
+
     if connection_info:
         logger.info(f"Disconnecting from host at {connection_info.host_address}:{connection_info.profiler_grpc_port}")
-        
+
         # If we have a PID, try to terminate the daemon process
-        if connection_info.pid:
+        if connection_info.control_port:
+            logger.info(f"Shutting down client on port: {connection_info.control_port}")
+            try:
+                response = requests.get(f"http://localhost:{connection_info.control_port}/disconnect")
+                if response.status_code == 200:
+                    logger.info("Client daemon disconnected successfully")
+                else:
+                    logger.error(f"Failed to disconnect client daemon: {response.text}")
+            except requests.RequestException as e:
+                logger.error(f"Error disconnecting client daemon: {e}")
+        elif connection_info.pid:
             try:
                 import psutil
+
                 if psutil.pid_exists(connection_info.pid):
                     logger.info(f"Terminating client daemon process (PID {connection_info.pid})")
                     process = psutil.Process(connection_info.pid)
@@ -193,12 +206,12 @@ def disconnect():
                 logger.info("You may need to manually kill the client process")
             except Exception as e:
                 logger.error(f"Error terminating daemon process: {e}")
-        
+
         # Clear connection information
         clear_connection_info("client")
         logger.info("Successfully disconnected from host")
         return
-    
+
     # Fallback: check in-memory state (blocking mode)
     elif client_state.is_connected:
         logger.info(f"Disconnecting from host at {client_state.host_address}")
@@ -246,33 +259,34 @@ def status():
 
     # Check for persisted connection info first
     connection_info = get_connection_info("client")
-    
+
     # If we have connection info, we're potentially connected
     if connection_info:
         logger.info("Status: CONNECTED")
         logger.info(f"Host Address: {connection_info.host_address}:{connection_info.profiler_grpc_port}")
         logger.info(f"Node ID: {connection_info.node_id}")
         logger.info(f"Connected At: {connection_info.connected_at}")
-        
+
         if connection_info.pid:
             # Check if the client process is still running
             try:
                 import psutil
+
                 if psutil.pid_exists(connection_info.pid):
                     logger.info(f"Client Process: running (PID {connection_info.pid})")
                 else:
                     logger.info(f"Client Process: stopped (PID {connection_info.pid} not found)")
             except ImportError:
                 logger.info(f"Client Process: PID {connection_info.pid} (psutil not available for verification)")
-        
+
         # Try to check actual connection to host
         try:
             import grpc
             from ..profiler import profiler_pb2_grpc, profiler_pb2
-            
+
             logger.info("\nHost Connection Test:")
             logger.info("-" * 30)
-            
+
             async def test_connection():
                 try:
                     host_address = f"{connection_info.host_address}:{connection_info.profiler_grpc_port}"
@@ -285,30 +299,30 @@ def status():
                             f"Host Bandwidth Profiling: {'enabled' if status_response.enable_bandwidth_profiling else 'disabled'}"
                         )
                         logger.info(f"Connected Clients: {len(status_response.connected_clients)}")
-                        
+
                         # Check if this client is in the connected clients list
                         if connection_info.node_id in status_response.connected_clients:
                             logger.info(f"This Client: registered with host")
                         else:
                             logger.info(f"This Client: not found in host's client list")
-                        
+
                         return True
                 except Exception as e:
                     logger.warning(f"Host Status: unreachable ({e})")
                     return False
-            
+
             import asyncio
-            
+
             try:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 loop.run_until_complete(test_connection())
             finally:
                 loop.close()
-                
+
         except Exception as e:
             logger.debug(f"Could not test host connection: {e}")
-            
+
     elif client_state.is_connected:
         # Fallback to in-memory state (for blocking mode)
         logger.info("Status: CONNECTED")
