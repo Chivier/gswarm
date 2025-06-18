@@ -11,6 +11,7 @@ from loguru import logger
 # Global variable to store custom config path
 _custom_config_path: Optional[Path] = None
 
+
 @dataclass
 class HostConfig:
     """Host/Head node configuration"""
@@ -97,7 +98,7 @@ def load_config() -> GSwarmConfig:
         except Exception as e:
             logger.warning(f"Error loading config file {config_path}: {e}")
             logger.info("Using default configuration")
-    
+
     # Return default config without saving if file doesn't exist
     config = GSwarmConfig()
     logger.info("Using default configuration (no config file found)")
@@ -111,7 +112,7 @@ def save_config(config: GSwarmConfig) -> bool:
     try:
         # Create directory if it doesn't exist
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         data = {
             "host": {
                 "huggingface_cache_dir": config.host.huggingface_cache_dir,

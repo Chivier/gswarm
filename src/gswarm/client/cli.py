@@ -4,6 +4,7 @@ import typer
 import threading
 import signal
 import sys
+import os
 import platform
 from typing import Optional
 from loguru import logger
@@ -189,14 +190,14 @@ def disconnect():
                 if psutil.pid_exists(connection_info.pid):
                     logger.info(f"Terminating client daemon process (PID {connection_info.pid})")
                     process = psutil.Process(connection_info.pid)
-                    process.terminate()
+                    os.kill(process.pid, signal.SIGINT)  # Send SIGINT to allow graceful shutdown
                     # Wait a bit for graceful termination
                     try:
                         process.wait(timeout=5)
                         logger.info("Client daemon terminated gracefully")
                     except psutil.TimeoutExpired:
                         logger.warning("Client daemon did not terminate gracefully, forcing termination")
-                        process.kill()
+                        os.kill(process.pid, signal.SIGKILL)  # Force kill if it didn't stop
                         process.wait()
                         logger.info("Client daemon forcefully terminated")
                 else:

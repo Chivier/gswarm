@@ -341,7 +341,7 @@ async def get_config():
     return {
         "model_cache_dir": str(get_model_cache_dir()),
         "dram_cache_dir": str(get_dram_cache_dir()),
-        "model_manager_port": config.host.model_manager_port,
+        "model_manager_port": load_config().host.model_manager_port,
     }
 
 
@@ -1275,7 +1275,7 @@ async def startup_event():
     logger.info("Starting GSwarm Model Manager...")
     logger.info(f"Model cache directory: {get_model_cache_dir()}")
     logger.info(f"DRAM cache directory: {get_dram_cache_dir()}")
-    
+
     # Don't auto-discover models on the host
     # Model discovery should happen on clients
     logger.info("Model discovery disabled on host - models should be discovered on client nodes")

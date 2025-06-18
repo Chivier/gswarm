@@ -149,6 +149,7 @@ async def collect_gpu_metrics(enable_bandwidth: bool) -> Dict[str, Any]:
                         # Try to get from torch as fallback
                         try:
                             import torch
+
                             if torch.cuda.is_available() and i < torch.cuda.device_count():
                                 props = torch.cuda.get_device_properties(i)
                                 gpu_metric["mem_total_mb"] = props.total_memory // (1024 * 1024)
@@ -159,6 +160,7 @@ async def collect_gpu_metrics(enable_bandwidth: bool) -> Dict[str, Any]:
                 # Final fallback to torch if available
                 try:
                     import torch
+
                     if torch.cuda.is_available() and i < torch.cuda.device_count():
                         props = torch.cuda.get_device_properties(i)
                         gpu_metric["mem_total_mb"] = props.total_memory // (1024 * 1024)

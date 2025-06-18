@@ -302,7 +302,7 @@ def read(
                     for gpu in node_status.gpus:
                         # Use a simple fallback for GPU name since we can't access head node state from CLI
                         gpu_name = f"GPU_{gpu.gpu_id}"
-                        
+
                         gpu_data = {
                             "gpu_id": gpu.gpu_id,
                             "device_type": gpu_name,

@@ -41,18 +41,17 @@ app.add_typer(queue_cli.app, name="queue", help="Task queue management")
 @app.callback()
 def main_callback(
     yaml_config: Optional[str] = typer.Option(
-        None, 
-        "--yaml", 
-        help="Path to YAML configuration file (overrides ~/.gswarm.conf)"
-    )
+        None, "--yaml", help="Path to YAML configuration file (overrides ~/.gswarm.conf)"
+    ),
 ):
     """
     Gswarm - Distributed GPU cluster management system
-    
+
     Use --yaml to specify a custom configuration file instead of ~/.gswarm.conf
     """
     if yaml_config:
         from .utils.config import set_config_path
+
         set_config_path(yaml_config)
 
 
