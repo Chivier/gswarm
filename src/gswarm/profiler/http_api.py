@@ -148,34 +148,7 @@ async def stop_profiling():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/clients")
-async def get_clients():
-    """Get connected clients and their GPU info"""
-    try:
-        clients_info = []
-        for client_id, hostname in state.connected_clients.items():
-            gpu_info = state.client_gpu_info.get(client_id, [])
-            clients_info.append(
-                {"client_id": client_id, "hostname": hostname, "gpu_count": len(gpu_info), "gpus": gpu_info}
-            )
-
-        return {"total_clients": len(clients_info), "clients": clients_info}
-    except Exception as e:
-        logger.error(f"Error getting clients: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/metrics/latest")
-async def get_latest_metrics():
-    """Get latest metrics from all connected clients"""
-    try:
-        return {"timestamp": datetime.now().isoformat(), "client_data": state.latest_client_data}
-    except Exception as e:
-        logger.error(f"Error getting latest metrics: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/record_time", response_model=TimeConsumptionResponse)
+@app.post("/profiling/record", response_model=TimeConsumptionResponse)
 async def record_time_consumption(request: TimeConsumptionRequest):
     """Record time consumption for a specific application"""
     try:
@@ -207,6 +180,33 @@ async def record_time_consumption(request: TimeConsumptionRequest):
         return TimeConsumptionResponse(success=True, message="Time consumption recorded successfully")
     except Exception as e:
         logger.error(f"Error recording time consumption: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/clients")
+async def get_clients():
+    """Get connected clients and their GPU info"""
+    try:
+        clients_info = []
+        for client_id, hostname in state.connected_clients.items():
+            gpu_info = state.client_gpu_info.get(client_id, [])
+            clients_info.append(
+                {"client_id": client_id, "hostname": hostname, "gpu_count": len(gpu_info), "gpus": gpu_info}
+            )
+
+        return {"total_clients": len(clients_info), "clients": clients_info}
+    except Exception as e:
+        logger.error(f"Error getting clients: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/metrics/latest")
+async def get_latest_metrics():
+    """Get latest metrics from all connected clients"""
+    try:
+        return {"timestamp": datetime.now().isoformat(), "client_data": state.latest_client_data}
+    except Exception as e:
+        logger.error(f"Error getting latest metrics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
