@@ -7,6 +7,7 @@ from loguru import logger
 import asyncio
 import grpc
 import enum
+import traceback
 
 app = typer.Typer(help="GPU profiling operations")
 
@@ -50,6 +51,8 @@ def start(
     if freq:
         logger.info(f"  Frequency override: {freq}ms")
 
+    report_metrics = report_metrics or []
+
     async def start_profiling_async():
         try:
             from . import profiler_pb2, profiler_pb2_grpc
@@ -68,6 +71,7 @@ def start(
                     logger.error(f"Failed to start profiling: {response.message}")
         except Exception as e:
             logger.error(f"Failed to start profiling: {e}")
+            traceback.print_exc()
 
     asyncio.run(start_profiling_async())
 

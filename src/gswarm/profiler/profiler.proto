@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package gswarm_profiler;
 
+import "google/protobuf/struct.proto";
+
 // Message definitions
 message GPUInfo {
     int32 physical_idx = 1;
@@ -22,6 +24,7 @@ message GPUMetric {
     double dram_bw_gbps_tx = 6;
     double nvlink_bw_gbps_rx = 7;
     double nvlink_bw_gbps_tx = 8;
+    google.protobuf.Struct extra_metrics = 9; // Store any user defined data here
 }
 
 message P2PLink {

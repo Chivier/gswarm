@@ -23,9 +23,12 @@ try:
     from gswarm.profiler import profiler_pb2
     from gswarm.profiler import profiler_pb2_grpc
     from gswarm.profiler.adaptive_sampler import AdaptiveSampler
+    from google.protobuf.struct_pb2 import Struct
 except ImportError:
     logger.error("gRPC protobuf files not found. Please run 'python generate_grpc.py' first.")
     raise
+
+from gswarm.profiler.client_common import parse_extra_metrics
 
 
 def display_gpu_info(payload: Dict[str, Any]):
@@ -103,7 +106,7 @@ def collect_system_metrics() -> Dict[str, float]:
     return system_metrics
 
 
-async def collect_gpu_metrics(enable_bandwidth: bool) -> Dict[str, Any]:
+async def collect_gpu_metrics(enable_bandwidth: bool, extra_metrics) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "gpus_metrics": [],
     }
@@ -125,6 +128,7 @@ async def collect_gpu_metrics(enable_bandwidth: bool) -> Dict[str, Any]:
                 "dram_bw_gbps_tx": 0.0,
                 "nvlink_bw_gbps_rx": 0.0,
                 "nvlink_bw_gbps_tx": 0.0,
+                "extra_metrics": {},
             }
 
             try:
@@ -207,10 +211,22 @@ async def collect_gpu_metrics(enable_bandwidth: bool) -> Dict[str, Any]:
                     "dram_bw_gbps_tx": 0.0,
                     "nvlink_bw_gbps_rx": 0.0,
                     "nvlink_bw_gbps_tx": 0.0,
+                    "extra_metrics": {},
                 }
             )
 
+    # collect extra metrics if available
+    for i, device in enumerate(devices):
+        for extra_name, extra_func in extra_metrics.items():
+            try:
+                extra_value = extra_func(device)
+                if extra_value is not None:
+                    payload["gpus_metrics"][i]["extra_metrics"][extra_name] = extra_value
+            except Exception as e:
+                logger.warning(f"Error collecting extra metric '{extra_name}' for device {i}: {e}")
+                payload["gpus_metrics"][i]["extra_metrics"][extra_name] = None
     # Add system metrics to payload
+
     payload["system_metrics"] = collect_system_metrics()
 
     return payload
@@ -220,6 +236,8 @@ def dict_to_grpc_metrics_update(hostname: str, payload: Dict[str, Any]) -> profi
     """Convert dictionary payload to gRPC MetricsUpdate message"""
     gpu_metrics = []
     for gpu in payload.get("gpus_metrics", []):
+        extra_data_struct = Struct()
+        extra_data_struct.update(gpu.get("extra_metrics", {}))  # Convert extra metrics to Struct
         gpu_metrics.append(
             profiler_pb2.GPUMetric(
                 physical_idx=gpu["physical_idx"],
@@ -230,6 +248,7 @@ def dict_to_grpc_metrics_update(hostname: str, payload: Dict[str, Any]) -> profi
                 dram_bw_gbps_tx=gpu.get("dram_bw_gbps_tx", 0.0),
                 nvlink_bw_gbps_rx=gpu.get("nvlink_bw_gbps_rx", 0.0),
                 nvlink_bw_gbps_tx=gpu.get("nvlink_bw_gbps_tx", 0.0),
+                extra_metrics=extra_data_struct,  # Use Struct for extra metrics
             )
         )
 
@@ -327,10 +346,12 @@ async def run_client_node(head_address: str, enable_bandwidth: bool):
                     logger.warning(f"Failed to get host config: {e}. Using defaults.")
 
                 # Start streaming metrics
+                extra_metrics = parse_extra_metrics()
+
                 async def metrics_generator():
                     while True:
                         try:
-                            metrics_payload = await collect_gpu_metrics(enable_bandwidth)
+                            metrics_payload = await collect_gpu_metrics(enable_bandwidth, extra_metrics)
 
                             if use_adaptive:
                                 # Check if we should sample based on adaptive strategy

@@ -24,6 +24,9 @@ from fastapi import FastAPI
 import os
 import signal
 
+from gswarm.profiler.client_common import parse_extra_metrics
+import traceback
+
 
 class ResilientClient:
     """Client with automatic reconnection and data buffering"""
@@ -67,6 +70,7 @@ class ResilientClient:
         # Adaptive sampler (initialized when needed)
         self.adaptive_sampler = None
         self._printed_sampling_config = False  # Track if we've printed sampling config
+        self.extra_metrics = parse_extra_metrics()
 
     def _init_gpu_info(self):
         """Initialize GPU information"""
@@ -154,6 +158,8 @@ class ResilientClient:
     async def _start_streaming(self):
         """Start streaming metrics to head node"""
         try:
+            extra_metricsc = parse_extra_metrics()
+
             # Create async generator for metrics
             async def metrics_generator():
                 sent_count = 0
@@ -181,7 +187,7 @@ class ResilientClient:
                         if self.use_adaptive:
                             # Check if we should sample based on adaptive strategy
                             should_sample = False
-                            metrics_payload = await collect_gpu_metrics(self.enable_bandwidth)
+                            metrics_payload = await collect_gpu_metrics(self.enable_bandwidth, extra_metricsc)
 
                             # Check GPU utilization changes
                             for gpu in metrics_payload.get("gpus_metrics", []):
@@ -215,7 +221,7 @@ class ResilientClient:
                             await asyncio.sleep(0.2)  # 200ms minimum
                         else:
                             # Fixed frequency sampling
-                            metrics_payload = await collect_gpu_metrics(self.enable_bandwidth)
+                            metrics_payload = await collect_gpu_metrics(self.enable_bandwidth, extra_metricsc)
                             grpc_update = dict_to_grpc_metrics_update(self.hostname, metrics_payload)
                             grpc_update.timestamp = time.time()
                             yield grpc_update
@@ -232,6 +238,7 @@ class ResilientClient:
                         raise
                     except Exception as e:
                         logger.error(f"Error in metrics generator: {e}")
+                        traceback.print_exc()
                         self.connected = False
                         break
 
@@ -267,7 +274,7 @@ class ResilientClient:
                 if self.use_adaptive:
                     # For adaptive mode, check if we should collect
                     should_collect = False
-                    metrics_payload = await collect_gpu_metrics(self.enable_bandwidth)
+                    metrics_payload = await collect_gpu_metrics(self.enable_bandwidth, self.extra_metrics)
 
                     # Check for significant changes
                     for gpu in metrics_payload.get("gpus_metrics", []):
@@ -295,7 +302,7 @@ class ResilientClient:
                     await asyncio.sleep(0.2)  # Check every 200ms
                 else:
                     # Fixed frequency mode
-                    metrics_payload = await collect_gpu_metrics(self.enable_bandwidth)
+                    metrics_payload = await collect_gpu_metrics(self.enable_bandwidth, self.extra_metrics)
                     grpc_update = dict_to_grpc_metrics_update(self.hostname, metrics_payload)
                     grpc_update.timestamp = time.time()
 
@@ -314,6 +321,7 @@ class ResilientClient:
 
             except Exception as e:
                 logger.error(f"Error collecting metrics: {e}")
+                traceback.print_exc()
                 await asyncio.sleep(1)
 
     async def _reconnect_loop(self):

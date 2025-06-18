@@ -22,61 +22,62 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
+from google.protobuf import struct_pb2 as google_dot_protobuf_dot_struct__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0eprofiler.proto\x12\x0fgswarm_profiler\"-\n\x07GPUInfo\x12\x14\n\x0cphysical_idx\x18\x01 \x01(\x05\x12\x0c\n\x04name\x18\x02 \x01(\t\"G\n\x0bInitialInfo\x12\x10\n\x08hostname\x18\x01 \x01(\t\x12&\n\x04gpus\x18\x02 \x03(\x0b\x32\x18.gswarm_profiler.GPUInfo\"\xbb\x01\n\tGPUMetric\x12\x14\n\x0cphysical_idx\x18\x01 \x01(\x05\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x10\n\x08gpu_util\x18\x03 \x01(\x01\x12\x10\n\x08mem_util\x18\x04 \x01(\x01\x12\x17\n\x0f\x64ram_bw_gbps_rx\x18\x05 \x01(\x01\x12\x17\n\x0f\x64ram_bw_gbps_tx\x18\x06 \x01(\x01\x12\x19\n\x11nvlink_bw_gbps_rx\x18\x07 \x01(\x01\x12\x19\n\x11nvlink_bw_gbps_tx\x18\x08 \x01(\x01\"\xae\x01\n\x07P2PLink\x12\x1d\n\x15local_gpu_physical_id\x18\x01 \x01(\x05\x12\x16\n\x0elocal_gpu_name\x18\x02 \x01(\t\x12\x1e\n\x16remote_gpu_physical_id\x18\x03 \x01(\x05\x12\x17\n\x0fremote_gpu_name\x18\x04 \x01(\t\x12\x0c\n\x04type\x18\x05 \x01(\t\x12%\n\x1d\x61ggregated_max_bandwidth_gbps\x18\x06 \x01(\x01\"5\n\rSystemMetrics\x12\x11\n\tdram_util\x18\x01 \x01(\x01\x12\x11\n\tdisk_util\x18\x02 \x01(\x01\"\xcb\x01\n\rMetricsUpdate\x12\x10\n\x08hostname\x18\x01 \x01(\t\x12\x30\n\x0cgpus_metrics\x18\x02 \x03(\x0b\x32\x1a.gswarm_profiler.GPUMetric\x12+\n\tp2p_links\x18\x03 \x03(\x0b\x32\x18.gswarm_profiler.P2PLink\x12\x36\n\x0esystem_metrics\x18\x04 \x01(\x0b\x32\x1e.gswarm_profiler.SystemMetrics\x12\x11\n\ttimestamp\x18\x05 \x01(\x01\"3\n\x0f\x43onnectResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"\xe5\x01\n\x0eStatusResponse\x12\x0c\n\x04\x66req\x18\x01 \x01(\x05\x12\"\n\x1a\x65nable_bandwidth_profiling\x18\x02 \x01(\x08\x12\x1f\n\x17\x65nable_nvlink_profiling\x18\x03 \x01(\x08\x12\x14\n\x0cis_profiling\x18\x04 \x01(\x08\x12\x17\n\x0foutput_filename\x18\x05 \x01(\t\x12\x18\n\x10\x66rame_id_counter\x18\x06 \x01(\x05\x12\x19\n\x11\x63onnected_clients\x18\x07 \x03(\t\x12\x1c\n\x14\x61\x63tive_sessions_json\x18\x08 \x01(\t\"=\n\x15StartProfilingRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x16\n\x0ereport_metrics\x18\x02 \x03(\t\"O\n\x16StartProfilingResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x13\n\x0boutput_file\x18\x03 \x01(\t\"$\n\x14StopProfilingRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\"9\n\x15StopProfilingResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"\x07\n\x05\x45mpty\"\x1a\n\x18ReadClusterStatusRequest\"(\n\x15ReadNodeStatusRequest\x12\x0f\n\x07node_id\x18\x01 \x01(\t\"G\n\nNodeStatus\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12(\n\x04gpus\x18\x02 \x03(\x0b\x32\x1a.gswarm_profiler.GPUStatus\"\xb1\x01\n\tGPUStatus\x12\x0e\n\x06gpu_id\x18\x01 \x01(\x05\x12\x13\n\x0butilization\x18\x02 \x01(\x01\x12\x13\n\x0bmemory_used\x18\x03 \x01(\x03\x12\x14\n\x0cmemory_total\x18\x04 \x01(\x03\x12\x16\n\x0e\x64ram_bandwidth\x18\x05 \x01(\x01\x12\x18\n\x10nvlink_bandwidth\x18\x06 \x01(\x01\x12\x13\n\x0btemperature\x18\x07 \x01(\x01\x12\r\n\x05power\x18\x08 \x01(\x01\"y\n\x15\x43lusterStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x12\n\ncluster_id\x18\x03 \x01(\t\x12*\n\x05nodes\x18\x04 \x03(\x0b\x32\x1b.gswarm_profiler.NodeStatus\"h\n\x12NodeStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x30\n\x0bnode_status\x18\x03 \x01(\x0b\x32\x1b.gswarm_profiler.NodeStatus\".\n\x1cSetBandwidthProfilingRequest\x12\x0e\n\x06\x65nable\x18\x01 \x01(\x08\"A\n\x1dSetBandwidthProfilingResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"+\n\x19SetNVLinkProfilingRequest\x12\x0e\n\x06\x65nable\x18\x01 \x01(\x08\">\n\x1aSetNVLinkProfilingResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t2\x96\x07\n\x0fProfilerService\x12I\n\x07\x43onnect\x12\x1c.gswarm_profiler.InitialInfo\x1a .gswarm_profiler.ConnectResponse\x12I\n\rStreamMetrics\x12\x1e.gswarm_profiler.MetricsUpdate\x1a\x16.gswarm_profiler.Empty(\x01\x12\x44\n\tGetStatus\x12\x16.gswarm_profiler.Empty\x1a\x1f.gswarm_profiler.StatusResponse\x12\x61\n\x0eStartProfiling\x12&.gswarm_profiler.StartProfilingRequest\x1a\'.gswarm_profiler.StartProfilingResponse\x12^\n\rStopProfiling\x12%.gswarm_profiler.StopProfilingRequest\x1a&.gswarm_profiler.StopProfilingResponse\x12\x36\n\x04\x45xit\x12\x16.gswarm_profiler.Empty\x1a\x16.gswarm_profiler.Empty\x12\x66\n\x11ReadClusterStatus\x12).gswarm_profiler.ReadClusterStatusRequest\x1a&.gswarm_profiler.ClusterStatusResponse\x12]\n\x0eReadNodeStatus\x12&.gswarm_profiler.ReadNodeStatusRequest\x1a#.gswarm_profiler.NodeStatusResponse\x12v\n\x15SetBandwidthProfiling\x12-.gswarm_profiler.SetBandwidthProfilingRequest\x1a..gswarm_profiler.SetBandwidthProfilingResponse\x12m\n\x12SetNVLinkProfiling\x12*.gswarm_profiler.SetNVLinkProfilingRequest\x1a+.gswarm_profiler.SetNVLinkProfilingResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0eprofiler.proto\x12\x0fgswarm_profiler\x1a\x1cgoogle/protobuf/struct.proto\"-\n\x07GPUInfo\x12\x14\n\x0cphysical_idx\x18\x01 \x01(\x05\x12\x0c\n\x04name\x18\x02 \x01(\t\"G\n\x0bInitialInfo\x12\x10\n\x08hostname\x18\x01 \x01(\t\x12&\n\x04gpus\x18\x02 \x03(\x0b\x32\x18.gswarm_profiler.GPUInfo\"\xeb\x01\n\tGPUMetric\x12\x14\n\x0cphysical_idx\x18\x01 \x01(\x05\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x10\n\x08gpu_util\x18\x03 \x01(\x01\x12\x10\n\x08mem_util\x18\x04 \x01(\x01\x12\x17\n\x0f\x64ram_bw_gbps_rx\x18\x05 \x01(\x01\x12\x17\n\x0f\x64ram_bw_gbps_tx\x18\x06 \x01(\x01\x12\x19\n\x11nvlink_bw_gbps_rx\x18\x07 \x01(\x01\x12\x19\n\x11nvlink_bw_gbps_tx\x18\x08 \x01(\x01\x12.\n\rextra_metrics\x18\t \x01(\x0b\x32\x17.google.protobuf.Struct\"\xae\x01\n\x07P2PLink\x12\x1d\n\x15local_gpu_physical_id\x18\x01 \x01(\x05\x12\x16\n\x0elocal_gpu_name\x18\x02 \x01(\t\x12\x1e\n\x16remote_gpu_physical_id\x18\x03 \x01(\x05\x12\x17\n\x0fremote_gpu_name\x18\x04 \x01(\t\x12\x0c\n\x04type\x18\x05 \x01(\t\x12%\n\x1d\x61ggregated_max_bandwidth_gbps\x18\x06 \x01(\x01\"5\n\rSystemMetrics\x12\x11\n\tdram_util\x18\x01 \x01(\x01\x12\x11\n\tdisk_util\x18\x02 \x01(\x01\"\xcb\x01\n\rMetricsUpdate\x12\x10\n\x08hostname\x18\x01 \x01(\t\x12\x30\n\x0cgpus_metrics\x18\x02 \x03(\x0b\x32\x1a.gswarm_profiler.GPUMetric\x12+\n\tp2p_links\x18\x03 \x03(\x0b\x32\x18.gswarm_profiler.P2PLink\x12\x36\n\x0esystem_metrics\x18\x04 \x01(\x0b\x32\x1e.gswarm_profiler.SystemMetrics\x12\x11\n\ttimestamp\x18\x05 \x01(\x01\"3\n\x0f\x43onnectResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"\xe5\x01\n\x0eStatusResponse\x12\x0c\n\x04\x66req\x18\x01 \x01(\x05\x12\"\n\x1a\x65nable_bandwidth_profiling\x18\x02 \x01(\x08\x12\x1f\n\x17\x65nable_nvlink_profiling\x18\x03 \x01(\x08\x12\x14\n\x0cis_profiling\x18\x04 \x01(\x08\x12\x17\n\x0foutput_filename\x18\x05 \x01(\t\x12\x18\n\x10\x66rame_id_counter\x18\x06 \x01(\x05\x12\x19\n\x11\x63onnected_clients\x18\x07 \x03(\t\x12\x1c\n\x14\x61\x63tive_sessions_json\x18\x08 \x01(\t\"=\n\x15StartProfilingRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x16\n\x0ereport_metrics\x18\x02 \x03(\t\"O\n\x16StartProfilingResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x13\n\x0boutput_file\x18\x03 \x01(\t\"$\n\x14StopProfilingRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\"9\n\x15StopProfilingResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"\x07\n\x05\x45mpty\"\x1a\n\x18ReadClusterStatusRequest\"(\n\x15ReadNodeStatusRequest\x12\x0f\n\x07node_id\x18\x01 \x01(\t\"G\n\nNodeStatus\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12(\n\x04gpus\x18\x02 \x03(\x0b\x32\x1a.gswarm_profiler.GPUStatus\"\xb1\x01\n\tGPUStatus\x12\x0e\n\x06gpu_id\x18\x01 \x01(\x05\x12\x13\n\x0butilization\x18\x02 \x01(\x01\x12\x13\n\x0bmemory_used\x18\x03 \x01(\x03\x12\x14\n\x0cmemory_total\x18\x04 \x01(\x03\x12\x16\n\x0e\x64ram_bandwidth\x18\x05 \x01(\x01\x12\x18\n\x10nvlink_bandwidth\x18\x06 \x01(\x01\x12\x13\n\x0btemperature\x18\x07 \x01(\x01\x12\r\n\x05power\x18\x08 \x01(\x01\"y\n\x15\x43lusterStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x12\n\ncluster_id\x18\x03 \x01(\t\x12*\n\x05nodes\x18\x04 \x03(\x0b\x32\x1b.gswarm_profiler.NodeStatus\"h\n\x12NodeStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x30\n\x0bnode_status\x18\x03 \x01(\x0b\x32\x1b.gswarm_profiler.NodeStatus\".\n\x1cSetBandwidthProfilingRequest\x12\x0e\n\x06\x65nable\x18\x01 \x01(\x08\"A\n\x1dSetBandwidthProfilingResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"+\n\x19SetNVLinkProfilingRequest\x12\x0e\n\x06\x65nable\x18\x01 \x01(\x08\">\n\x1aSetNVLinkProfilingResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t2\x96\x07\n\x0fProfilerService\x12I\n\x07\x43onnect\x12\x1c.gswarm_profiler.InitialInfo\x1a .gswarm_profiler.ConnectResponse\x12I\n\rStreamMetrics\x12\x1e.gswarm_profiler.MetricsUpdate\x1a\x16.gswarm_profiler.Empty(\x01\x12\x44\n\tGetStatus\x12\x16.gswarm_profiler.Empty\x1a\x1f.gswarm_profiler.StatusResponse\x12\x61\n\x0eStartProfiling\x12&.gswarm_profiler.StartProfilingRequest\x1a\'.gswarm_profiler.StartProfilingResponse\x12^\n\rStopProfiling\x12%.gswarm_profiler.StopProfilingRequest\x1a&.gswarm_profiler.StopProfilingResponse\x12\x36\n\x04\x45xit\x12\x16.gswarm_profiler.Empty\x1a\x16.gswarm_profiler.Empty\x12\x66\n\x11ReadClusterStatus\x12).gswarm_profiler.ReadClusterStatusRequest\x1a&.gswarm_profiler.ClusterStatusResponse\x12]\n\x0eReadNodeStatus\x12&.gswarm_profiler.ReadNodeStatusRequest\x1a#.gswarm_profiler.NodeStatusResponse\x12v\n\x15SetBandwidthProfiling\x12-.gswarm_profiler.SetBandwidthProfilingRequest\x1a..gswarm_profiler.SetBandwidthProfilingResponse\x12m\n\x12SetNVLinkProfiling\x12*.gswarm_profiler.SetNVLinkProfilingRequest\x1a+.gswarm_profiler.SetNVLinkProfilingResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'profiler_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_GPUINFO']._serialized_start=35
-  _globals['_GPUINFO']._serialized_end=80
-  _globals['_INITIALINFO']._serialized_start=82
-  _globals['_INITIALINFO']._serialized_end=153
-  _globals['_GPUMETRIC']._serialized_start=156
-  _globals['_GPUMETRIC']._serialized_end=343
-  _globals['_P2PLINK']._serialized_start=346
-  _globals['_P2PLINK']._serialized_end=520
-  _globals['_SYSTEMMETRICS']._serialized_start=522
-  _globals['_SYSTEMMETRICS']._serialized_end=575
-  _globals['_METRICSUPDATE']._serialized_start=578
-  _globals['_METRICSUPDATE']._serialized_end=781
-  _globals['_CONNECTRESPONSE']._serialized_start=783
-  _globals['_CONNECTRESPONSE']._serialized_end=834
-  _globals['_STATUSRESPONSE']._serialized_start=837
-  _globals['_STATUSRESPONSE']._serialized_end=1066
-  _globals['_STARTPROFILINGREQUEST']._serialized_start=1068
-  _globals['_STARTPROFILINGREQUEST']._serialized_end=1129
-  _globals['_STARTPROFILINGRESPONSE']._serialized_start=1131
-  _globals['_STARTPROFILINGRESPONSE']._serialized_end=1210
-  _globals['_STOPPROFILINGREQUEST']._serialized_start=1212
-  _globals['_STOPPROFILINGREQUEST']._serialized_end=1248
-  _globals['_STOPPROFILINGRESPONSE']._serialized_start=1250
-  _globals['_STOPPROFILINGRESPONSE']._serialized_end=1307
-  _globals['_EMPTY']._serialized_start=1309
-  _globals['_EMPTY']._serialized_end=1316
-  _globals['_READCLUSTERSTATUSREQUEST']._serialized_start=1318
-  _globals['_READCLUSTERSTATUSREQUEST']._serialized_end=1344
-  _globals['_READNODESTATUSREQUEST']._serialized_start=1346
-  _globals['_READNODESTATUSREQUEST']._serialized_end=1386
-  _globals['_NODESTATUS']._serialized_start=1388
-  _globals['_NODESTATUS']._serialized_end=1459
-  _globals['_GPUSTATUS']._serialized_start=1462
-  _globals['_GPUSTATUS']._serialized_end=1639
-  _globals['_CLUSTERSTATUSRESPONSE']._serialized_start=1641
-  _globals['_CLUSTERSTATUSRESPONSE']._serialized_end=1762
-  _globals['_NODESTATUSRESPONSE']._serialized_start=1764
-  _globals['_NODESTATUSRESPONSE']._serialized_end=1868
-  _globals['_SETBANDWIDTHPROFILINGREQUEST']._serialized_start=1870
-  _globals['_SETBANDWIDTHPROFILINGREQUEST']._serialized_end=1916
-  _globals['_SETBANDWIDTHPROFILINGRESPONSE']._serialized_start=1918
-  _globals['_SETBANDWIDTHPROFILINGRESPONSE']._serialized_end=1983
-  _globals['_SETNVLINKPROFILINGREQUEST']._serialized_start=1985
-  _globals['_SETNVLINKPROFILINGREQUEST']._serialized_end=2028
-  _globals['_SETNVLINKPROFILINGRESPONSE']._serialized_start=2030
-  _globals['_SETNVLINKPROFILINGRESPONSE']._serialized_end=2092
-  _globals['_PROFILERSERVICE']._serialized_start=2095
-  _globals['_PROFILERSERVICE']._serialized_end=3013
+  _globals['_GPUINFO']._serialized_start=65
+  _globals['_GPUINFO']._serialized_end=110
+  _globals['_INITIALINFO']._serialized_start=112
+  _globals['_INITIALINFO']._serialized_end=183
+  _globals['_GPUMETRIC']._serialized_start=186
+  _globals['_GPUMETRIC']._serialized_end=421
+  _globals['_P2PLINK']._serialized_start=424
+  _globals['_P2PLINK']._serialized_end=598
+  _globals['_SYSTEMMETRICS']._serialized_start=600
+  _globals['_SYSTEMMETRICS']._serialized_end=653
+  _globals['_METRICSUPDATE']._serialized_start=656
+  _globals['_METRICSUPDATE']._serialized_end=859
+  _globals['_CONNECTRESPONSE']._serialized_start=861
+  _globals['_CONNECTRESPONSE']._serialized_end=912
+  _globals['_STATUSRESPONSE']._serialized_start=915
+  _globals['_STATUSRESPONSE']._serialized_end=1144
+  _globals['_STARTPROFILINGREQUEST']._serialized_start=1146
+  _globals['_STARTPROFILINGREQUEST']._serialized_end=1207
+  _globals['_STARTPROFILINGRESPONSE']._serialized_start=1209
+  _globals['_STARTPROFILINGRESPONSE']._serialized_end=1288
+  _globals['_STOPPROFILINGREQUEST']._serialized_start=1290
+  _globals['_STOPPROFILINGREQUEST']._serialized_end=1326
+  _globals['_STOPPROFILINGRESPONSE']._serialized_start=1328
+  _globals['_STOPPROFILINGRESPONSE']._serialized_end=1385
+  _globals['_EMPTY']._serialized_start=1387
+  _globals['_EMPTY']._serialized_end=1394
+  _globals['_READCLUSTERSTATUSREQUEST']._serialized_start=1396
+  _globals['_READCLUSTERSTATUSREQUEST']._serialized_end=1422
+  _globals['_READNODESTATUSREQUEST']._serialized_start=1424
+  _globals['_READNODESTATUSREQUEST']._serialized_end=1464
+  _globals['_NODESTATUS']._serialized_start=1466
+  _globals['_NODESTATUS']._serialized_end=1537
+  _globals['_GPUSTATUS']._serialized_start=1540
+  _globals['_GPUSTATUS']._serialized_end=1717
+  _globals['_CLUSTERSTATUSRESPONSE']._serialized_start=1719
+  _globals['_CLUSTERSTATUSRESPONSE']._serialized_end=1840
+  _globals['_NODESTATUSRESPONSE']._serialized_start=1842
+  _globals['_NODESTATUSRESPONSE']._serialized_end=1946
+  _globals['_SETBANDWIDTHPROFILINGREQUEST']._serialized_start=1948
+  _globals['_SETBANDWIDTHPROFILINGREQUEST']._serialized_end=1994
+  _globals['_SETBANDWIDTHPROFILINGRESPONSE']._serialized_start=1996
+  _globals['_SETBANDWIDTHPROFILINGRESPONSE']._serialized_end=2061
+  _globals['_SETNVLINKPROFILINGREQUEST']._serialized_start=2063
+  _globals['_SETNVLINKPROFILINGREQUEST']._serialized_end=2106
+  _globals['_SETNVLINKPROFILINGRESPONSE']._serialized_start=2108
+  _globals['_SETNVLINKPROFILINGRESPONSE']._serialized_end=2170
+  _globals['_PROFILERSERVICE']._serialized_start=2173
+  _globals['_PROFILERSERVICE']._serialized_end=3091
 # @@protoc_insertion_point(module_scope)

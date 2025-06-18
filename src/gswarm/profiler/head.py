@@ -4,6 +4,7 @@ import json
 import socket
 from typing import Dict, List, Any, Tuple
 import grpc
+from google.protobuf.json_format import MessageToDict
 from concurrent import futures
 from loguru import logger
 import psutil
@@ -61,6 +62,7 @@ class HeadNodeState:
         self.gpu_util_count: Dict[str, int] = {}
         self.gpu_total_memory: Dict[str, float] = {}
         self.gpu_memory_count: Dict[str, int] = {}
+        self.gpu_extra_metrics: Dict[str, Dict[str, Any]] = {}
 
         # Add these new attributes:
         self.session_manager = SessionManager()
@@ -145,6 +147,7 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
                             "dram_bw_gbps_tx": gpu_metric.dram_bw_gbps_tx,
                             "nvlink_bw_gbps_rx": gpu_metric.nvlink_bw_gbps_rx,
                             "nvlink_bw_gbps_tx": gpu_metric.nvlink_bw_gbps_tx,
+                            "extra_metrics": MessageToDict(gpu_metric.extra_metrics),  # Use Struct for extra metrics
                         }
                     )
 
@@ -231,6 +234,7 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
             state.dram_util_count = {}
             state.disk_total_util = {}
             state.disk_util_count = {}
+            state.gpu_extra_metrics = {}
 
         state.profiling_task = asyncio.create_task(collect_and_store_frame())
         logger.info(f"Profiling started. Output will be saved to {state.output_filename}")
@@ -415,6 +419,7 @@ async def collect_and_store_frame():
                 "gpu_memory": [],
                 "dram_util": [],  # Add system DRAM utilization
                 "disk_util": [],  # Add disk utilization
+                "extra_metrics": [],
             }
             if state.enable_bandwidth_profiling:
                 current_frame["dram_bandwidth"] = []
@@ -437,7 +442,7 @@ async def collect_and_store_frame():
                     current_frame["gpu_id"].append(gpu_global_id)
                     current_frame["gpu_util"].append(f"{gpu_metric['gpu_util']:.2f}")
                     current_frame["gpu_memory"].append(f"{gpu_metric['mem_util']:.2f}")
-
+                    current_frame["extra_metrics"].append(gpu_metric.get("extra_metrics", {}))
                     # Accumulate stats for overall average
                     util_value = float(gpu_metric["gpu_util"])
                     mem_value = float(gpu_metric["mem_util"])
