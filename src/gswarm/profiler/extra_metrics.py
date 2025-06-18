@@ -32,3 +32,30 @@ def get_gpu_power_metrics(device):
         power_info["power_usage"] = power_usage
 
     return power_info
+
+
+def get_gpu_clock_metrics(device):
+    """
+    Get GPU clock metrics for a given device.
+
+    Args:
+        device (nvitop.Device): The nvitop device object.
+
+    Returns:
+        dict: A dictionary containing the GPU clock metrics.
+    """
+    clock_info = {}
+    graphics_clock = device.graphics_clock()
+    memory_clock = device.memory_clock()
+
+    if graphics_clock is None or graphics_clock == nvitop.NA:
+        clock_info["graphics_clock"] = None
+    else:
+        clock_info["graphics_clock"] = graphics_clock
+
+    if memory_clock is None or memory_clock == nvitop.NA:
+        clock_info["memory_clock"] = None
+    else:
+        clock_info["memory_clock"] = memory_clock
+
+    return clock_info
