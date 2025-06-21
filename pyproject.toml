@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gswarm"
-version = "0.4.1"
+version = "0.4.2"
 description = "Distributed GPU cluster management system with profiling and model orchestration"
 authors = [
     {name = "Chivier Humber", email = "chivier.humber@outlook.com"},
