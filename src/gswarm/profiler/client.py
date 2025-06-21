@@ -28,7 +28,7 @@ except ImportError:
     logger.error("gRPC protobuf files not found. Please run 'python generate_grpc.py' first.")
     raise
 
-from gswarm.profiler.client_common import parse_extra_metrics
+from gswarm.profiler.client_common import get_extra_metrics_value
 
 
 def display_gpu_info(payload: Dict[str, Any]):
@@ -106,7 +106,7 @@ def collect_system_metrics() -> Dict[str, float]:
     return system_metrics
 
 
-async def collect_gpu_metrics(enable_bandwidth: bool, extra_metrics) -> Dict[str, Any]:
+async def collect_gpu_metrics(enable_bandwidth: bool, extra_metrics: list[str]) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "gpus_metrics": [],
     }
@@ -217,14 +217,7 @@ async def collect_gpu_metrics(enable_bandwidth: bool, extra_metrics) -> Dict[str
 
     # collect extra metrics if available
     for i, device in enumerate(devices):
-        for extra_name, extra_func in extra_metrics.items():
-            try:
-                extra_value = extra_func(device)
-                if extra_value is not None:
-                    payload["gpus_metrics"][i]["extra_metrics"][extra_name] = extra_value
-            except Exception as e:
-                logger.warning(f"Error collecting extra metric '{extra_name}' for device {i}: {e}")
-                payload["gpus_metrics"][i]["extra_metrics"][extra_name] = None
+        payload["gpus_metrics"][i]["extra_metrics"] = get_extra_metrics_value(device, extra_metrics)
     # Add system metrics to payload
 
     payload["system_metrics"] = collect_system_metrics()
@@ -276,7 +269,7 @@ def dict_to_grpc_metrics_update(hostname: str, payload: Dict[str, Any]) -> profi
     )
 
 
-async def run_client_node(head_address: str, enable_bandwidth: bool):
+async def run_client_node(head_address: str, enable_bandwidth: bool, extra_metrics: list[str] = []):
     hostname = platform.node()
 
     # These will be set from host config
@@ -345,9 +338,6 @@ async def run_client_node(head_address: str, enable_bandwidth: bool):
                 except Exception as e:
                     logger.warning(f"Failed to get host config: {e}. Using defaults.")
 
-                # Start streaming metrics
-                extra_metrics = parse_extra_metrics()
-
                 async def metrics_generator():
                     while True:
                         try:
@@ -408,12 +398,12 @@ async def run_client_node(head_address: str, enable_bandwidth: bool):
                     async def update_display():
                         while True:
                             try:
-                                metrics_payload = await collect_gpu_metrics(enable_bandwidth)
+                                metrics_payload = await collect_gpu_metrics(enable_bandwidth, extra_metrics)
                                 live.update(display_gpu_info(metrics_payload))
                                 # Display updates at fixed rate regardless of sampling mode
                                 await asyncio.sleep(0.25)  # 4Hz display update
                             except Exception as e:
-                                logger.error(f"Error updating display: {e}")
+                                live.console.print(f"Error updating display: {e}")
                                 break
 
                     # Run both the display update and metrics streaming concurrently
@@ -441,13 +431,13 @@ async def run_client_node(head_address: str, enable_bandwidth: bool):
         retry_delay = min(retry_delay * 2, 60)  # Exponential backoff up to 60s
 
 
-def create_client_lifespan(head_address: str, enable_bandwidth: bool) -> FastAPI:
+def create_client_lifespan(head_address: str, enable_bandwidth: bool, extra_metrics: list[str] = []) -> FastAPI:
     """Create FastAPI app with resilient client context"""
 
     @asynccontextmanager
     async def resilient_client_context(app: FastAPI):
         """Context manager for ResilientClient"""
-        task = asyncio.create_task(run_client_node(head_address, enable_bandwidth))
+        task = asyncio.create_task(run_client_node(head_address, enable_bandwidth, extra_metrics))
         yield
 
         task.cancel()

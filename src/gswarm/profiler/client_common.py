@@ -1,43 +1,44 @@
 import importlib.util
 import ast
 from loguru import logger
+import nvitop
 
 
-def find_function_names(file_path):
+def check_nvitop_support(deivce, name: str):
+    if not hasattr(deivce, name):
+        return False
+    value = getattr(deivce, name)()
+    if value is None or value == nvitop.NA:
+        return False
+    return True
+
+
+def parse_extra_metrics(metrics_list: list[str]) -> list[str]:
     """
-    Use ast static analysis to find all top-level function names in a Python file.
-
-    :param file_path: Path to the target Python file.
-    :return: A list containing all function names.
+    Check support metrics in metric list and return supported metrics.
     """
-    with open(file_path, "r", encoding="utf-8") as source:
-        tree = ast.parse(source.read())
 
-    function_names = [node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
-    return function_names
+    test_device = nvitop.Device(0)  # By default, we use device 0 to check support.
+    supported_metrics = []
+    for metric in metrics_list:
+        if hasattr(test_device, metric):
+            value = getattr(test_device, metric)()
+            if value is not None and value != nvitop.NA:
+                supported_metrics.append(metric)
+            else:
+                logger.warning(f"Metric '{metric}' is not supported by the device.")
+        else:
+            logger.warning(f"Metric '{metric}' does not exist in the device.")
+    return supported_metrics
 
 
-def dynamic_import_metrics(file_path, function_names):
+def get_extra_metrics_value(device, metrics: list[str]) -> dict[str, float]:
     """
-    Dynamically import a module and get functions with specified names from it.
-
-    :param file_path: Path to the target Python file.
-    :param function_names: List of function names to import.
-    :return: A dictionary containing specified function names and function objects.
+    Get the value of extra metrics from the device.
     """
-    spec = importlib.util.spec_from_file_location("dynamic_module", file_path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    metrics_value = {}
+    for metric in metrics:
+        value = getattr(device, metric)()
+        metrics_value[metric] = value if value is not None and value != nvitop.NA else 0.0
 
-    functions = {name[4:-8]: getattr(module, name) for name in function_names if hasattr(module, name)}
-    return functions
-
-
-def parse_extra_metrics():
-    function_names = find_function_names("src/gswarm/profiler/extra_metrics.py")
-
-    available_metrics = [name for name in function_names if name.startswith("get_") and name.endswith("_metrics")]
-    available_metrics = dynamic_import_metrics("src/gswarm/profiler/extra_metrics.py", available_metrics)
-
-    logger.info(f"Enabled extra metrics: {list(available_metrics.keys())}")
-    return available_metrics
+    return metrics_value

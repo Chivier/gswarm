@@ -31,7 +31,7 @@ import traceback
 class ResilientClient:
     """Client with automatic reconnection and data buffering"""
 
-    def __init__(self, head_address: str, enable_bandwidth: bool):
+    def __init__(self, head_address: str, enable_bandwidth: bool, extra_metrics: List[str] = []):
         self.head_address = head_address
         self.enable_bandwidth = enable_bandwidth
         self.hostname = platform.node()
@@ -70,7 +70,8 @@ class ResilientClient:
         # Adaptive sampler (initialized when needed)
         self.adaptive_sampler = None
         self._printed_sampling_config = False  # Track if we've printed sampling config
-        self.extra_metrics = parse_extra_metrics()
+
+        self.extra_metrics = extra_metrics
 
     def _init_gpu_info(self):
         """Initialize GPU information"""
@@ -158,8 +159,6 @@ class ResilientClient:
     async def _start_streaming(self):
         """Start streaming metrics to head node"""
         try:
-            extra_metricsc = parse_extra_metrics()
-
             # Create async generator for metrics
             async def metrics_generator():
                 sent_count = 0
@@ -187,7 +186,7 @@ class ResilientClient:
                         if self.use_adaptive:
                             # Check if we should sample based on adaptive strategy
                             should_sample = False
-                            metrics_payload = await collect_gpu_metrics(self.enable_bandwidth, extra_metricsc)
+                            metrics_payload = await collect_gpu_metrics(self.enable_bandwidth, self.extra_metrics)
 
                             # Check GPU utilization changes
                             for gpu in metrics_payload.get("gpus_metrics", []):
@@ -221,7 +220,7 @@ class ResilientClient:
                             await asyncio.sleep(0.2)  # 200ms minimum
                         else:
                             # Fixed frequency sampling
-                            metrics_payload = await collect_gpu_metrics(self.enable_bandwidth, extra_metricsc)
+                            metrics_payload = await collect_gpu_metrics(self.enable_bandwidth, self.extra_metrics)
                             grpc_update = dict_to_grpc_metrics_update(self.hostname, metrics_payload)
                             grpc_update.timestamp = time.time()
                             yield grpc_update
@@ -414,13 +413,13 @@ class ResilientClient:
         logger.info("Client shutdown complete")
 
 
-def create_resilient_lifespan(head_address: str, enable_bandwidth: bool) -> FastAPI:
+def create_resilient_lifespan(head_address: str, enable_bandwidth: bool, extra_metrics: list[str] = []) -> FastAPI:
     """Create FastAPI app with resilient client context"""
 
     @asynccontextmanager
     async def resilient_client_context(app: FastAPI):
         """Context manager for ResilientClient"""
-        app.state.client = ResilientClient(head_address, enable_bandwidth)
+        app.state.client = ResilientClient(head_address, enable_bandwidth, extra_metrics)
         app.state.client_run_task = asyncio.create_task(app.state.client.run())
 
         yield

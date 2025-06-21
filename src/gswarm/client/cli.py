@@ -11,6 +11,7 @@ from loguru import logger
 from ..utils.connection_info import get_connection_file, save_connection, clear_connection_info, get_connection_info
 from ..utils.daemonizer import daemonize, get_pid_file, check_pid_file_exists, get_log_filepath
 from .client_common import create_client_app, start_client
+from gswarm.profiler.client_common import parse_extra_metrics
 
 import requests
 
@@ -45,7 +46,7 @@ class ClientState:
 client_state = ClientState()
 
 
-def create_runner(host_address: str, resilient: bool, enable_bandwidth: bool):
+def create_runner(host_address: str, resilient: bool, enable_bandwidth: bool, extra_metrics: list[str] = []):
     """Run client in a separate thread with proper signal handling"""
 
     def client_runner():
@@ -55,7 +56,7 @@ def create_runner(host_address: str, resilient: bool, enable_bandwidth: bool):
             else:
                 from ..profiler.client import create_client_lifespan as lifespan_func
 
-            app = create_client_app(host_address, enable_bandwidth, lifespan_func)
+            app = create_client_app(host_address, enable_bandwidth, lifespan_func, extra_metrics)
             start_client(app)
         except KeyboardInterrupt:
             logger.info("Client interrupted")
@@ -78,6 +79,12 @@ def connect(
     ),
     node_id: Optional[str] = typer.Option(None, "--node-id", "-n", help="Custom node ID"),
     block: bool = typer.Option(False, "--block", "-b", help="Block until client is started (default: False)"),
+    extra_metrics: Optional[str] = typer.Option(
+        None,
+        "--extra-metrics",
+        "-e",
+        help="Comma-separated list of extra metrics to collect (e.g., 'gpu_memory,gpu_utilization')",
+    ),
 ):
     """Connect this node as a client to the host"""
 
@@ -140,8 +147,15 @@ def connect(
     except Exception as e:
         logger.debug(f"Model service not available (this is optional): {e}")
 
+    # Parse extra metrics if provided
+
+    if extra_metrics:
+        supported_metrics = parse_extra_metrics(extra_metrics.split(","))
+    else:
+        supported_metrics = []
+
     # Start profiler client in a separate thread
-    client_runner = create_runner(host_address, resilient, enable_bandwidth)
+    client_runner = create_runner(host_address, resilient, enable_bandwidth, supported_metrics)
     client_state.client_thread = threading.Thread(target=client_runner, daemon=True)
     client_state.client_thread.start()
     client_state.is_connected = True

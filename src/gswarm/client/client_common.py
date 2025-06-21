@@ -6,9 +6,11 @@ import asyncio
 from ..utils.connection_info import update_connection_info
 
 
-def create_client_app(head_address: str, enable_bandwidth: bool, lifespan_func) -> FastAPI:
+def create_client_app(
+    head_address: str, enable_bandwidth: bool, lifespan_func, extra_metrics: list[str] = []
+) -> FastAPI:
     """Create FastAPI app with resilient client"""
-    app = FastAPI(lifespan=lifespan_func(head_address, enable_bandwidth))
+    app = FastAPI(lifespan=lifespan_func(head_address, enable_bandwidth, extra_metrics))
 
     async def delayed_shutdown(pid: int):
         """Delayed shutdown to ensure response is sent"""
