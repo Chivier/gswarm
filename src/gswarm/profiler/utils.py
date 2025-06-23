@@ -90,12 +90,12 @@ def draw_gpu_util_bubble(gpu_datalist, frame_ids, ax):
     cbar = plt.colorbar(im, ax=ax, shrink=0.8)
     cbar.set_label("GPU Utilization (%)")
 
-    # Add text annotations for better readability
-    # for i in range(gpu_util_matrix.shape[0]):
-    #     for j in range(min(gpu_util_matrix.shape[1], 20)):  # Limit annotations for readability
-    #         text = ax.text(j, i, f"{gpu_util_matrix[i, j]:.1f}", ha="center", va="center", color="black", fontsize=8)
 
+# TODO: Write your own code to draw your own metrics here
+# def draw_custom_metric(gpu_datalist, frame_ids, ax):
+#     ...
 
+# TODO: Remember to add your own metrics to the metrics_mapping dictionary
 metrics_mapping = {
     "gpu_utilization": draw_gpu_utilization,
     "gpu_memory": draw_gpu_memory,
