@@ -1,0 +1,47 @@
+{
+  "experiment_config": {
+    "total_workflows": 500,
+    "duration_minutes": 20,
+    "gpu_type": "NVIDIA A5000",
+    "gpu_counts": [
+      4,
+      8,
+      10,
+      12
+    ]
+  },
+  "results_summary": {
+    "4_gpus": {
+      "baseline_time_seconds": 23.14,
+      "lazy_time_seconds": 42337.15,
+      "speedup": 0.0,
+      "load_time_reduction_percent": -40533.3,
+      "model_switch_reduction_percent": -19850.0,
+      "avg_latency_reduction_percent": -57380.7
+    },
+    "8_gpus": {
+      "baseline_time_seconds": 23.14,
+      "lazy_time_seconds": 21943.34,
+      "speedup": 0.0,
+      "load_time_reduction_percent": -17589.5,
+      "model_switch_reduction_percent": -9437.5,
+      "avg_latency_reduction_percent": -29324.7
+    },
+    "10_gpus": {
+      "baseline_time_seconds": 94.6,
+      "lazy_time_seconds": 12911.34,
+      "speedup": 0.01,
+      "load_time_reduction_percent": -3532.0,
+      "model_switch_reduction_percent": -4220.0,
+      "avg_latency_reduction_percent": -4342.2
+    },
+    "12_gpus": {
+      "baseline_time_seconds": 94.6,
+      "lazy_time_seconds": 14862.24,
+      "speedup": 0.01,
+      "load_time_reduction_percent": -10234.5,
+      "model_switch_reduction_percent": -5716.7,
+      "avg_latency_reduction_percent": -6636.8
+    }
+  }
+}

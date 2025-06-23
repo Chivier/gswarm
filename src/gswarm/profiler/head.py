@@ -282,6 +282,7 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
                         for gpu_metric in client_data.get("gpus_metrics", []):
                             gpu_status = profiler_pb2.GPUStatus(
                                 gpu_id=gpu_metric["physical_idx"],
+                                gpu_name=gpu_metric.get("name", f"GPU_{gpu_metric['physical_idx']}"),
                                 utilization=gpu_metric["gpu_util"],
                                 memory_used=gpu_metric.get(
                                     "mem_used_mb",
@@ -337,6 +338,7 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
                 for gpu_metric in client_data.get("gpus_metrics", []):
                     gpu_status = profiler_pb2.GPUStatus(
                         gpu_id=gpu_metric["physical_idx"],
+                        gpu_name=gpu_metric.get("name", f"GPU_{gpu_metric['physical_idx']}"),
                         utilization=gpu_metric["gpu_util"],
                         memory_used=gpu_metric.get(
                             "mem_used_mb", int(gpu_metric.get("mem_util", 0) * gpu_metric.get("mem_total_mb", 16384))

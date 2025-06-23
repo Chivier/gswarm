@@ -1,0 +1,66 @@
+{
+  "baseline": {
+    "8": {
+      "total_time": 16920.349999999926,
+      "total_load_time": 16272,
+      "total_inference_time": 648.3499999999991,
+      "num_workflows": 500
+    },
+    "10": {
+      "total_time": 16920.349999999926,
+      "total_load_time": 16272,
+      "total_inference_time": 648.3499999999991,
+      "num_workflows": 500
+    },
+    "12": {
+      "total_time": 16920.349999999926,
+      "total_load_time": 16272,
+      "total_inference_time": 648.3499999999991,
+      "num_workflows": 500
+    },
+    "16": {
+      "total_time": 16920.349999999926,
+      "total_load_time": 16272,
+      "total_inference_time": 648.3499999999991,
+      "num_workflows": 500
+    },
+    "20": {
+      "total_time": 16920.349999999926,
+      "total_load_time": 16272,
+      "total_inference_time": 648.3499999999991,
+      "num_workflows": 500
+    }
+  },
+  "lazy": {
+    "8": {
+      "total_time": 1250.018093,
+      "total_load_time": 8992,
+      "total_inference_time": 648.3499999999997,
+      "num_workflows": 500
+    },
+    "10": {
+      "total_time": 1255.1667759999993,
+      "total_load_time": 11078,
+      "total_inference_time": 648.3499999999991,
+      "num_workflows": 500
+    },
+    "12": {
+      "total_time": 1258.8363829999996,
+      "total_load_time": 12610,
+      "total_inference_time": 648.3499999999992,
+      "num_workflows": 500
+    },
+    "16": {
+      "total_time": 1253.3052229999998,
+      "total_load_time": 14228,
+      "total_inference_time": 648.3499999999992,
+      "num_workflows": 500
+    },
+    "20": {
+      "total_time": 1253.16876,
+      "total_load_time": 12884,
+      "total_inference_time": 648.3499999999991,
+      "num_workflows": 500
+    }
+  }
+}
