@@ -154,6 +154,8 @@ def connect(
     else:
         supported_metrics = []
 
+    logger.info(f"Extra metrics to collect: {', '.join(supported_metrics) if supported_metrics else 'None'}")
+
     # Start profiler client in a separate thread
     client_runner = create_runner(host_address, resilient, enable_bandwidth, supported_metrics)
     client_state.client_thread = threading.Thread(target=client_runner, daemon=True)
