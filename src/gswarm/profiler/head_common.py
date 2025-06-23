@@ -3,7 +3,7 @@ import asyncio
 import aiofiles
 import json
 
-from .utils import draw_metrics
+from ..utils.draw_metrics import draw_metrics
 
 
 async def profiler_stop_cleanup(state):

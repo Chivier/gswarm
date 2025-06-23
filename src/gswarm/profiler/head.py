@@ -27,7 +27,7 @@ except ImportError:
     logger.error("gRPC protobuf files not found. Please run 'python generate_grpc.py' first.")
     raise
 
-from gswarm.profiler.utils import draw_metrics
+from gswarm.utils.draw_metrics import draw_metrics
 
 
 # --- Global State for Head Node ---

@@ -10,7 +10,7 @@ import json
 
 # Import the head module's state
 from gswarm.profiler.head import state, HeadNodeState
-from .utils import draw_metrics
+from gswarm.utils.draw_metrics import draw_metrics
 from gswarm.profiler.head_common import profiler_stop_cleanup
 
 app = FastAPI(

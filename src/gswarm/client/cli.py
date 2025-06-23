@@ -8,9 +8,14 @@ import os
 import platform
 from typing import Optional
 from loguru import logger
-from ..utils.connection_info import get_connection_file, save_connection, clear_connection_info, get_connection_info
-from ..utils.daemonizer import daemonize, get_pid_file, check_pid_file_exists, get_log_filepath
-from .client_common import create_client_app, start_client
+from gswarm.utils.connection_info import (
+    get_connection_file,
+    save_connection,
+    clear_connection_info,
+    get_connection_info,
+)
+from gswarm.utils.daemonizer import daemonize, get_pid_file, check_pid_file_exists, get_log_filepath
+from gswarm.profiler.client_common import create_client_app, start_client
 from gswarm.profiler.client_common import parse_extra_metrics
 
 import requests
@@ -52,9 +57,9 @@ def create_runner(host_address: str, resilient: bool, enable_bandwidth: bool, ex
     def client_runner():
         try:
             if resilient:
-                from ..profiler.client_resilient import create_resilient_lifespan as lifespan_func
+                from gswarm.profiler.client_resilient import create_resilient_lifespan as lifespan_func
             else:
-                from ..profiler.client import create_client_lifespan as lifespan_func
+                from gswarm.profiler.client import create_client_lifespan as lifespan_func
 
             app = create_client_app(host_address, enable_bandwidth, lifespan_func, extra_metrics)
             start_client(app)
