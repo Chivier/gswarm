@@ -153,7 +153,7 @@ def start(
     logger.info(f"  Using adaptive sampling strategy (similar to WandB)")
 
     # Start both profiler and model services
-    from ..profiler.head import run_head_node as run_profiler_head
+    from gswarm.host.head import run_head_node as run_profiler_head
     from ..model.fastapi_head import create_app as create_model_app
 
     async def run_all_services():

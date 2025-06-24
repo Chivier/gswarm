@@ -17,7 +17,7 @@ from gswarm.profiler.session_manager import SessionManager, ProfilingSession
 from gswarm.profiler.persistence import FileBasedStorage
 from gswarm.profiler.adaptive_sampler import AdaptiveSampler
 
-from gswarm.profiler.head_common import profiler_stop_cleanup
+from gswarm.host.head_common import profiler_stop_cleanup
 
 # Import generated protobuf classes (these will be generated)
 try:
@@ -595,7 +595,7 @@ async def run_grpc_server(host: str, port: int):
 
 async def run_both_servers(grpc_host: str, grpc_port: int, http_host: str, http_port: int):
     """Run both gRPC and HTTP servers concurrently"""
-    from gswarm.profiler.http_api import run_http_server
+    from gswarm.host.http_api import run_http_server
 
     # Create tasks for both servers
     grpc_task = asyncio.create_task(run_grpc_server(grpc_host, grpc_port))

@@ -9,9 +9,9 @@ import aiofiles
 import json
 
 # Import the head module's state
-from gswarm.profiler.head import state, HeadNodeState
+from gswarm.host.head import state, HeadNodeState
 from gswarm.utils.draw_metrics import draw_metrics
-from gswarm.profiler.head_common import profiler_stop_cleanup
+from gswarm.host.head_common import profiler_stop_cleanup
 
 app = FastAPI(
     title="GSwarm Profiler HTTP API", description="HTTP API for GSwarm Profiler control panel", version="0.1.0"
@@ -113,7 +113,7 @@ async def start_profiling(request: StartProfilingRequest):
             state.report_metrics = request.report_metrics
 
         # Import the collect function from head module
-        from gswarm.profiler.head import collect_and_store_frame
+        from gswarm.host.head import collect_and_store_frame
 
         state.profiling_task = asyncio.create_task(collect_and_store_frame())
         logger.info(f"Profiling started via HTTP API. Output will be saved to {state.output_filename}")
