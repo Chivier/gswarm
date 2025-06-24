@@ -52,7 +52,6 @@ def main():
         "head.py",
         "client.py",
         "cli.py",
-        "client_grpc.py",
     ]
 
     for filename in files_to_fix:
