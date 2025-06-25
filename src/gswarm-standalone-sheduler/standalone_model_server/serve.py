@@ -17,15 +17,80 @@ import signal
 import psutil
 import shutil
 
+# Disable flash attention and xformers to avoid compatibility issues
+os.environ["DISABLE_FLASH_ATTN"] = "1"
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+os.environ["XFORMERS_DISABLED"] = "1"
+os.environ["DIFFUSERS_DISABLE_XFORMERS_WARNING"] = "1"
+
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 import torch
-import transformers
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+
+# Robust transformers import with fallback
+TRANSFORMERS_AVAILABLE = False
+PIPELINE_AVAILABLE = False
+
+try:
+    import transformers
+    from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel
+    # Try to import pipeline separately as it's often the problematic one
+    try:
+        from transformers import pipeline
+        PIPELINE_AVAILABLE = True
+    except ImportError as e:
+        print(f"WARNING: transformers pipeline not available: {e}")
+        PIPELINE_AVAILABLE = False
+    TRANSFORMERS_AVAILABLE = True
+    print("SUCCESS: transformers library loaded successfully")
+except ImportError as e:
+    print(f"ERROR: transformers not available: {e}")
+    print("The server will start but model functionality will be limited")
+    TRANSFORMERS_AVAILABLE = False
+    PIPELINE_AVAILABLE = False
+    # Create dummy classes to prevent AttributeError
+    class AutoTokenizer:
+        @staticmethod
+        def from_pretrained(*args, **kwargs):
+            raise RuntimeError("transformers not available - please install compatible version")
+    class AutoModelForCausalLM:
+        @staticmethod
+        def from_pretrained(*args, **kwargs):
+            raise RuntimeError("transformers not available - please install compatible version")
+    class AutoModel:
+        @staticmethod
+        def from_pretrained(*args, **kwargs):
+            raise RuntimeError("transformers not available - please install compatible version")
+
 import requests
 import uvicorn
 from loguru import logger
+
+# Robust diffusers import with fallback
+DIFFUSERS_AVAILABLE = False
+try:
+    # Disable xformers to avoid flash attention issues with diffusers
+    os.environ["XFORMERS_DISABLED"] = "1"
+    from diffusers import StableDiffusionPipeline
+    DIFFUSERS_AVAILABLE = True
+    print("SUCCESS: diffusers library loaded successfully")
+except ImportError as e:
+    DIFFUSERS_AVAILABLE = False
+    print(f"WARNING: diffusers not available - diffusion model support will be limited: {e}")
+    # Create a dummy class to prevent AttributeError
+    class StableDiffusionPipeline:
+        @staticmethod
+        def from_pretrained(*args, **kwargs):
+            raise RuntimeError("diffusers not available - please install compatible version or fix flash-attn version")
+except Exception as e:
+    DIFFUSERS_AVAILABLE = False
+    print(f"WARNING: diffusers failed to load - diffusion model support will be limited: {e}")
+    # Create a dummy class to prevent AttributeError
+    class StableDiffusionPipeline:
+        @staticmethod
+        def from_pretrained(*args, **kwargs):
+            raise RuntimeError("diffusers not available - please install compatible version or fix flash-attn version")
 
 # Configure logger
 logger.add("standalone_server.log", rotation="10 MB", level="INFO")
@@ -106,6 +171,9 @@ def get_available_device() -> str:
 
 def download_model_from_huggingface(model_name: str) -> str:
     """Download model from Hugging Face to local cache"""
+    if not TRANSFORMERS_AVAILABLE:
+        raise RuntimeError("transformers library not available. Please install a compatible version.")
+    
     try:
         model_path = state.model_cache_dir / model_name.replace("/", "--")
         
@@ -114,9 +182,6 @@ def download_model_from_huggingface(model_name: str) -> str:
             return str(model_path)
         
         logger.info(f"Downloading model {model_name} from Hugging Face...")
-        
-        # Use transformers to download
-        from transformers import AutoModel, AutoTokenizer
         
         # Download tokenizer and model
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=str(model_path))
@@ -139,6 +204,9 @@ def load_model_to_dram(model_name: str, model_path: str):
         model_type = get_model_type(model_name)
         
         if model_type == "llm":
+            if not TRANSFORMERS_AVAILABLE:
+                raise RuntimeError("transformers library not available for LLM models")
+                
             logger.info(f"Loading LLM model {model_name} to DRAM...")
             tokenizer = AutoTokenizer.from_pretrained(model_path)
             model = AutoModelForCausalLM.from_pretrained(
@@ -155,8 +223,7 @@ def load_model_to_dram(model_name: str, model_path: str):
         elif model_type == "diffusion":
             logger.info(f"Loading diffusion model {model_name} to DRAM...")
             # For stable diffusion models, we'll use diffusers pipeline
-            try:
-                from diffusers import StableDiffusionPipeline
+            if DIFFUSERS_AVAILABLE:
                 pipe = StableDiffusionPipeline.from_pretrained(
                     model_path,
                     torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32
@@ -166,8 +233,10 @@ def load_model_to_dram(model_name: str, model_path: str):
                     "type": "diffusion",
                     "loaded_at": datetime.now()
                 }
-            except ImportError:
-                logger.warning("diffusers not installed, loading as generic model")
+            else:
+                if not TRANSFORMERS_AVAILABLE:
+                    raise RuntimeError("Neither diffusers nor transformers available for diffusion models")
+                logger.warning("diffusers not available, loading as generic model")
                 # Fallback to generic loading
                 model = AutoModel.from_pretrained(model_path)
                 state.models_dram[model_name] = {
