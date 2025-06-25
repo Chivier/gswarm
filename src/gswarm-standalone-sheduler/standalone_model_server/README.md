@@ -8,6 +8,7 @@ A standalone HTTP server for managing and serving machine learning models, with 
 - **Load**: Load models to DRAM for faster access
 - **Serve**: Create serving instances on CPU or GPU devices with automatic port allocation
 - **Call**: Send inference requests to model instances
+- **Estimate**: Get execution time estimates without running inference
 - **Offload**: Move models between storage locations and stop serving
 - **Multi-Instance**: Support multiple instances of the same model on one device
 - **Port Management**: Automatic random port allocation (10000-20000 range)
@@ -289,6 +290,118 @@ Stop a specific serving instance and release its port.
 ```bash
 curl -X DELETE "http://localhost:8000/standalone/instance/a3k9m2"
 ```
+
+#### 8. Estimate Model Execution Time (Instance)
+**POST** `/standalone/estimate/{instance_id}`
+
+Get estimated execution time for model inference on a specific serving instance without actually running it.
+
+**Request Body:**
+```json
+{
+  "instance_id": "string",
+  "data": {
+    "prompt": "string",
+    "max_length": 100,
+    "temperature": 0.7
+  }
+}
+```
+
+**Parameters:**
+- Same as Call Model endpoint for input data
+- Returns estimation instead of actual inference
+
+**Example:**
+```bash
+curl -X POST "http://localhost:8000/standalone/estimate/a3k9m2" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "instance_id": "a3k9m2",
+    "data": {
+      "prompt": "The future of AI is",
+      "max_length": 50
+    }
+  }'
+```
+
+**Example Response:**
+```json
+{
+  "success": true,
+  "message": "Estimation completed",
+  "data": {
+    "estimated_execution_time": 1.23,
+    "estimated_time_unit": "seconds",
+    "model_type": "llm",
+    "instance_id": "a3k9m2",
+    "device": "cuda:0",
+    "data_features": ["prompt_length:17", "max_length:50", "temperature:0.7"],
+    "timestamp": "2024-01-15T10:30:00.123456"
+  }
+}
+```
+
+#### 9. Direct Model Estimation (No Instance Required)
+**POST** `/standalone/estimate`
+
+Get estimated execution time for model inference without needing a serving instance. Ideal for planning and scheduling.
+
+**Request Body:**
+```json
+{
+  "model_name": "microsoft/DialoGPT-medium",
+  "device": "cuda:0",
+  "data": {
+    "prompt": "Hello, how are you?",
+    "max_length": 50,
+    "temperature": 0.7
+  }
+}
+```
+
+**Parameters:**
+- `model_name` (string, required): Model name to estimate
+- `device` (string, required): Device to estimate on (`cpu`, `cuda:0`, etc.)
+- `data` (object, required): Input data for the model (same format as Call Model)
+
+**Example:**
+```bash
+curl -X POST "http://localhost:8000/standalone/estimate" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model_name": "gpt2",
+    "device": "cuda:0",
+    "data": {
+      "prompt": "Artificial intelligence will",
+      "max_length": 100,
+      "temperature": 0.8
+    }
+  }'
+```
+
+**Example Response:**
+```json
+{
+  "success": true,
+  "message": "Direct estimation completed",
+  "data": {
+    "estimated_execution_time": 2.45,
+    "estimated_time_unit": "seconds",
+    "model_type": "llm",
+    "model_name": "gpt2",
+    "device": "cuda:0",
+    "data_features": ["prompt_length:25", "max_length:100", "temperature:0.8"],
+    "timestamp": "2024-01-15T10:30:00.123456"
+  }
+}
+```
+
+**Use Cases:**
+- Planning model deployment without starting instances
+- Comparing execution times across different devices
+- Scheduling and resource allocation
+- Cost estimation for different model configurations
 
 ## Multi-Instance Support
 

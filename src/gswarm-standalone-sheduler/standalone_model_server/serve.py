@@ -169,6 +169,11 @@ class EstimateRequest(BaseModel):
     instance_id: str
     data: Dict[str, Any]
 
+class DirectEstimateRequest(BaseModel):
+    model_name: str = Field(description="Model name to estimate")
+    device: str = Field(description="Device to estimate on (e.g., 'cuda:0', 'cpu')")
+    data: Dict[str, Any] = Field(description="Input data for the model")
+
 class StandardResponse(BaseModel):
     success: bool
     message: str
@@ -875,6 +880,80 @@ async def estimate_model(instance_id: str, request: EstimateRequest):
         
     except Exception as e:
         logger.error(f"Estimation failed for instance {instance_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/standalone/estimate")
+async def estimate_model_direct(request: DirectEstimateRequest):
+    """Get estimated execution time for model inference without needing an instance"""
+    try:
+        model_name = request.model_name
+        device = request.device
+        input_data = request.data
+        
+        # Validate device
+        if device.startswith("cuda:"):
+            gpu_id = int(device.split(":")[1])
+            if not torch.cuda.is_available() or gpu_id >= torch.cuda.device_count():
+                raise HTTPException(status_code=400, detail=f"GPU device {device} not available")
+        
+        model_type = get_model_type(model_name)
+        
+        # Extract data features for cost estimation
+        data_features = []
+        
+        if model_type == "llm":
+            if "prompt" not in input_data:
+                raise HTTPException(status_code=400, detail="LLM models require 'prompt' in data")
+            
+            prompt = input_data["prompt"]
+            max_length = input_data.get("max_length", 100)
+            temperature = input_data.get("temperature", 0.7)
+            
+            # Add relevant features for cost estimation
+            data_features.extend([
+                f"prompt_length:{len(prompt)}",
+                f"max_length:{max_length}",
+                f"temperature:{temperature}"
+            ])
+            
+        elif model_type == "diffusion":
+            if "prompt" not in input_data:
+                raise HTTPException(status_code=400, detail="Diffusion models require 'prompt' in data")
+            
+            prompt = input_data["prompt"]
+            num_inference_steps = input_data.get("steps", 20)
+            guidance_scale = input_data.get("guidance_scale", 7.5)
+            
+            # Add relevant features for cost estimation
+            data_features.extend([
+                f"prompt_length:{len(prompt)}",
+                f"steps:{num_inference_steps}",
+                f"guidance_scale:{guidance_scale}"
+            ])
+        
+        # Get estimation from cost module
+        estimated_time = get_estimation_cost(
+            model_name, 
+            device, 
+            *data_features
+        )
+        
+        return StandardResponse(
+            success=True,
+            message="Direct estimation completed",
+            data={
+                "estimated_execution_time": estimated_time,
+                "estimated_time_unit": "seconds",
+                "model_type": model_type,
+                "model_name": model_name,
+                "device": device,
+                "data_features": data_features,
+                "timestamp": datetime.now().isoformat()
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Direct estimation failed for {model_name}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/standalone/status")
