@@ -210,25 +210,6 @@ def main():
     for model, hours in total_gpu_hours.items():
         print(f"  {model}: {hours:.2f} GPU-hours")
 
-    # Generate curl examples
-    curl_examples = []
-    for i in range(min(3, len(requests))):
-        req = requests[i].copy()
-        # Remove execution times from curl example
-        req.pop("node_execution_times", None)
-        curl = f"""curl -X POST http://localhost:8080/workflow \\
-  -H "Content-Type: application/json" \\
-  -d '{json.dumps(req, indent=2)}'"""
-        curl_examples.append(curl)
-
-    with open("curl_examples.sh", "w") as f:
-        f.write("#!/bin/bash\n\n")
-        f.write("# Example curl commands for workflow requests\n\n")
-        for example in curl_examples:
-            f.write(example + "\n\n")
-
-    print("\nCurl examples saved to curl_examples.sh")
-
 
 if __name__ == "__main__":
     main()
