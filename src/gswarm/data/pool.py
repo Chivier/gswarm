@@ -20,7 +20,7 @@ import datetime
 
 class DataStorage:
     """In-memory key-value storage with LRU eviction for non-persistent data"""
-    
+
     def __init__(self, max_mem_size: int = 16 * 1024 * 1024 * 1024):  # 16GB default
         self.max_mem_size = max_mem_size
         self.persistent_data: Dict[str, Any] = {}  # Persistent data that won't be evicted
@@ -28,30 +28,29 @@ class DataStorage:
         self.data_sizes: Dict[str, int] = {}  # Track size of each key-value pair
         self.current_size = 0
         self.lock = threading.RLock()
-        
+
     def _get_size(self, value: Any) -> int:
         """Get approximate size of a value in bytes"""
         try:
             return len(pickle.dumps(value))
         except:
             return sys.getsizeof(value)
-    
+
     def _evict_lru(self, needed_space: int) -> None:
         """Evict least recently used volatile data to free space"""
-        while (self.current_size + needed_space > self.max_mem_size and 
-               len(self.volatile_data) > 0):
+        while self.current_size + needed_space > self.max_mem_size and len(self.volatile_data) > 0:
             # Remove oldest item from volatile data
             key, value = self.volatile_data.popitem(last=False)
             freed_size = self.data_sizes.pop(key, 0)
             self.current_size -= freed_size
             logger.debug(f"Evicted key '{key}' to free {freed_size} bytes")
-    
+
     def write(self, key: str, value: Any, persist: bool = True) -> bool:
         """Write key-value pair to storage"""
         with self.lock:
             try:
                 value_size = self._get_size(value)
-                
+
                 # Remove existing key if it exists
                 if key in self.persistent_data:
                     old_size = self.data_sizes.get(key, 0)
@@ -61,72 +60,74 @@ class DataStorage:
                     old_size = self.data_sizes.get(key, 0)
                     self.current_size -= old_size
                     del self.volatile_data[key]
-                
+
                 # Check if we need to evict data (only for volatile data)
                 if not persist:
                     self._evict_lru(value_size)
-                
+
                 # Check if we still have enough space
                 if self.current_size + value_size > self.max_mem_size:
                     if persist:
-                        raise MemoryError(f"Not enough space for persistent data. Need {value_size} bytes, available {self.max_mem_size - self.current_size}")
+                        raise MemoryError(
+                            f"Not enough space for persistent data. Need {value_size} bytes, available {self.max_mem_size - self.current_size}"
+                        )
                     else:
                         logger.warning(f"Cannot store volatile data: not enough space even after eviction")
                         return False
-                
+
                 # Store the data
                 if persist:
                     self.persistent_data[key] = value
                 else:
                     self.volatile_data[key] = value
-                
+
                 self.data_sizes[key] = value_size
                 self.current_size += value_size
-                
+
                 logger.debug(f"Stored key '{key}' ({value_size} bytes, persist={persist})")
                 return True
-                
+
             except Exception as e:
                 logger.error(f"Failed to write key '{key}': {e}")
                 return False
-    
+
     def read(self, key: str) -> Optional[Any]:
         """Read value by key"""
         with self.lock:
             # Check persistent data first
             if key in self.persistent_data:
                 return self.persistent_data[key]
-            
+
             # Check volatile data and move to end (LRU update)
             if key in self.volatile_data:
                 value = self.volatile_data[key]
                 # Move to end (most recently used)
                 self.volatile_data.move_to_end(key)
                 return value
-            
+
             return None
-    
+
     def release(self, key: str) -> bool:
         """Remove key from storage"""
         with self.lock:
             freed_size = 0
             found = False
-            
+
             if key in self.persistent_data:
                 del self.persistent_data[key]
                 found = True
             elif key in self.volatile_data:
                 del self.volatile_data[key]
                 found = True
-            
+
             if found:
                 freed_size = self.data_sizes.pop(key, 0)
                 self.current_size -= freed_size
                 logger.debug(f"Released key '{key}' ({freed_size} bytes)")
                 return True
-            
+
             return False
-    
+
     def get_stats(self) -> Dict[str, Any]:
         """Get storage statistics"""
         with self.lock:
@@ -140,8 +141,8 @@ class DataStorage:
                 "memory_info": {
                     "available": psutil.virtual_memory().available,
                     "total": psutil.virtual_memory().total,
-                    "percent": psutil.virtual_memory().percent
-                }
+                    "percent": psutil.virtual_memory().percent,
+                },
             }
 
 
@@ -176,7 +177,7 @@ def serialize_value(value: Any) -> Dict[str, Any]:
         # Fall back to pickle for complex types
         try:
             pickled_data = pickle.dumps(value)
-            encoded_data = base64.b64encode(pickled_data).decode('utf-8')
+            encoded_data = base64.b64encode(pickled_data).decode("utf-8")
             return {"type": "pickle", "data": encoded_data}
         except Exception as e:
             raise ValueError(f"Unable to serialize value: {e}")
@@ -188,7 +189,7 @@ def deserialize_value(serialized: Dict[str, Any]) -> Any:
         return serialized["data"]
     elif serialized["type"] == "pickle":
         try:
-            pickled_data = base64.b64decode(serialized["data"].encode('utf-8'))
+            pickled_data = base64.b64decode(serialized["data"].encode("utf-8"))
             return pickle.loads(pickled_data)
         except Exception as e:
             raise ValueError(f"Unable to deserialize pickled value: {e}")
@@ -303,38 +304,30 @@ async def send_data(request: SendRequest):
     """Send key data to another data manager"""
     storage = get_storage()
     value = storage.read(request.key)
-    
+
     if value is None:
         raise HTTPException(status_code=404, detail=f"Key '{request.key}' not found")
-    
+
     try:
         # Send data to target URL
         target_url = request.url
         if not target_url.startswith("http://") and not target_url.startswith("https://"):
             target_url = f"http://{target_url}"
-        
+
         # Try extended API first, fall back to regular API
         try:
             serialized_value = serialize_value(value)
-            send_payload = {
-                "key": request.key,
-                "serialized_value": serialized_value,
-                "persist": True
-            }
+            send_payload = {"key": request.key, "serialized_value": serialized_value, "persist": True}
             response = requests.post(f"{target_url}/write_extended", json=send_payload, timeout=30)
             response.raise_for_status()
         except:
             # Fall back to regular API (JSON only)
-            send_payload = {
-                "key": request.key,
-                "value": value,
-                "persist": True
-            }
+            send_payload = {"key": request.key, "value": value, "persist": True}
             response = requests.post(f"{target_url}/write", json=send_payload, timeout=30)
             response.raise_for_status()
-        
+
         return {"status": "success", "key": request.key, "target": request.url}
-        
+
     except Exception as e:
         logger.error(f"Failed to send key '{request.key}' to {request.url}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to send data: {str(e)}")
@@ -357,13 +350,13 @@ async def set_max_memory_endpoint(max_size: int):
 
 class DataServer:
     """KV Data Server for easy programmatic access"""
-    
+
     def __init__(self, url: str = "localhost:9015", use_extended_api: bool = True):
         self.url = url
         self.use_extended_api = use_extended_api
         if not self.url.startswith("http://") and not self.url.startswith("https://"):
             self.url = f"http://{self.url}"
-    
+
     def write(self, key: str, value: Any, persist: bool = True) -> bool:
         """Write key-value pair with automatic format detection"""
         try:
@@ -373,26 +366,23 @@ class DataServer:
                     serialized_value = serialize_value(value)
                     response = requests.post(
                         f"{self.url}/write_extended",
-                        json={"key": key, "serialized_value": serialized_value, "persist": persist}
+                        json={"key": key, "serialized_value": serialized_value, "persist": persist},
                     )
                     response.raise_for_status()
                     return True
                 except:
                     # Fall back to regular API
                     pass
-            
+
             # Regular JSON API
-            response = requests.post(
-                f"{self.url}/write",
-                json={"key": key, "value": value, "persist": persist}
-            )
+            response = requests.post(f"{self.url}/write", json={"key": key, "value": value, "persist": persist})
             response.raise_for_status()
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to write key '{key}': {e}")
             return False
-    
+
     def read(self, key: str) -> Optional[Any]:
         """Read value by key with automatic format detection"""
         try:
@@ -409,17 +399,17 @@ class DataServer:
                 except:
                     # Fall back to regular API
                     pass
-            
+
             # Regular JSON API
             response = requests.get(f"{self.url}/read/{key}")
             response.raise_for_status()
             data = response.json()
             return data["value"] if data["found"] else None
-            
+
         except Exception as e:
             logger.error(f"Failed to read key '{key}': {e}")
             return None
-    
+
     def release(self, key: str) -> bool:
         """Remove key from storage"""
         try:
@@ -429,20 +419,17 @@ class DataServer:
         except Exception as e:
             logger.error(f"Failed to release key '{key}': {e}")
             return False
-    
+
     def send(self, key: str, target_url: str) -> bool:
         """Send key to another data manager"""
         try:
-            response = requests.post(
-                f"{self.url}/send",
-                json={"key": key, "url": target_url}
-            )
+            response = requests.post(f"{self.url}/send", json={"key": key, "url": target_url})
             response.raise_for_status()
             return True
         except Exception as e:
             logger.error(f"Failed to send key '{key}' to {target_url}: {e}")
             return False
-    
+
     def get_stats(self) -> Optional[Dict[str, Any]]:
         """Get storage statistics"""
         try:
@@ -452,7 +439,7 @@ class DataServer:
         except Exception as e:
             logger.error(f"Failed to get stats: {e}")
             return None
-    
+
     def set_max_memory(self, max_size: int) -> bool:
         """Set maximum memory size"""
         try:
@@ -468,10 +455,10 @@ def start_server(host: str = "0.0.0.0", port: int = 9015, max_mem_size: int = 16
     """Start the KV data storage server"""
     logger.info(f"Starting KV Data Storage server on {host}:{port}")
     logger.info(f"Maximum memory size: {max_mem_size / (1024**3):.1f} GB")
-    
+
     # Initialize storage with specified memory size
     set_max_memory(max_mem_size)
-    
+
     # Start server
     uvicorn.run(app, host=host, port=port, log_level="info")
 
@@ -544,13 +531,13 @@ def generate_chunk_id() -> str:
 async def list_data_chunks(device: Optional[str] = None, type: Optional[str] = None) -> DataChunksResponse:
     """List data chunks in the pool"""
     chunks = list(_data_chunks.values())
-    
+
     # Apply filters
     if device:
         chunks = [chunk for chunk in chunks if any(loc.device == device for loc in chunk.locations)]
     if type:
         chunks = [chunk for chunk in chunks if chunk.chunk_type == type]
-    
+
     return DataChunksResponse(chunks=chunks)
 
 
@@ -559,31 +546,25 @@ async def create_data_chunk(request: DataChunkCreateRequest):
     """Create a new data chunk"""
     try:
         chunk_id = generate_chunk_id()
-        
+
         # Create chunk metadata
         import datetime
+
         current_time = datetime.datetime.utcnow().isoformat() + "Z"
-        
+
         chunk = DataChunk(
             chunk_id=chunk_id,
             chunk_type=request.type,
             size=1048576,  # Default 1MB size
             format=request.format,
             locations=[DataChunkLocation(device=request.device)],
-            metadata=DataChunkMetadata(
-                created_by="data-api",
-                created_at=current_time
-            )
+            metadata=DataChunkMetadata(created_by="data-api", created_at=current_time),
         )
-        
+
         _data_chunks[chunk_id] = chunk
-        
-        return {
-            "status": "success",
-            "chunk_id": chunk_id,
-            "size": chunk.size
-        }
-        
+
+        return {"status": "success", "chunk_id": chunk_id, "size": chunk.size}
+
     except Exception as e:
         logger.error(f"Failed to create data chunk: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create data chunk: {str(e)}")
@@ -594,13 +575,13 @@ async def get_data_chunk(chunk_id: str) -> DataChunk:
     """Get data chunk information"""
     if chunk_id not in _data_chunks:
         raise HTTPException(status_code=404, detail=f"Data chunk '{chunk_id}' not found")
-    
+
     chunk = _data_chunks[chunk_id]
     # Update access count
     if chunk.metadata:
         chunk.metadata.access_count += 1
         chunk.metadata.last_accessed = datetime.datetime.utcnow().isoformat() + "Z"
-    
+
     return chunk
 
 
@@ -609,22 +590,17 @@ async def move_data_chunk(chunk_id: str, request: DataChunkMoveRequest):
     """Move data chunk between devices"""
     if chunk_id not in _data_chunks:
         raise HTTPException(status_code=404, detail=f"Data chunk '{chunk_id}' not found")
-    
+
     chunk = _data_chunks[chunk_id]
-    
+
     # Add new location (simplified implementation)
     new_location = DataChunkLocation(device=request.target_device, status="available")
     chunk.locations.append(new_location)
-    
+
     # Generate a mock task ID
     task_id = f"move-{chunk_id}-{int(time.time())}"
-    
-    return {
-        "status": "success",
-        "chunk_id": chunk_id,
-        "target_device": request.target_device,
-        "task_id": task_id
-    }
+
+    return {"status": "success", "chunk_id": chunk_id, "target_device": request.target_device, "task_id": task_id}
 
 
 @app.post("/api/v1/data/{chunk_id}/transfer")
@@ -632,22 +608,22 @@ async def transfer_data_chunk(chunk_id: str, request: DataChunkTransferRequest):
     """Transfer data chunk to another node"""
     if chunk_id not in _data_chunks:
         raise HTTPException(status_code=404, detail=f"Data chunk '{chunk_id}' not found")
-    
+
     chunk = _data_chunks[chunk_id]
-    
+
     # Add new location for target node (simplified implementation)
     target_device_name = f"{request.target_node}:{request.target_device}"
     new_location = DataChunkLocation(device=target_device_name, status="available")
     chunk.locations.append(new_location)
-    
+
     # Generate a mock task ID
     task_id = f"transfer-{chunk_id}-{int(time.time())}"
-    
+
     return {
         "status": "success",
         "chunk_id": chunk_id,
         "target": f"{request.target_node}:{request.target_device}",
-        "task_id": task_id
+        "task_id": task_id,
     }
 
 
@@ -656,22 +632,19 @@ async def delete_data_chunk(chunk_id: str, force: bool = False):
     """Delete data chunk from pool"""
     if chunk_id not in _data_chunks:
         raise HTTPException(status_code=404, detail=f"Data chunk '{chunk_id}' not found")
-    
+
     chunk = _data_chunks[chunk_id]
-    
+
     # Check if chunk is referenced (unless force is True)
     if not force and chunk.references:
         raise HTTPException(
-            status_code=400, 
-            detail=f"Cannot delete chunk '{chunk_id}': still referenced by {', '.join(chunk.references)}"
+            status_code=400,
+            detail=f"Cannot delete chunk '{chunk_id}': still referenced by {', '.join(chunk.references)}",
         )
-    
+
     del _data_chunks[chunk_id]
-    
-    return {
-        "status": "success",
-        "message": f"Data chunk '{chunk_id}' deleted successfully"
-    }
+
+    return {"status": "success", "message": f"Data chunk '{chunk_id}' deleted successfully"}
 
 
 # Queue API Pydantic models
@@ -727,37 +700,29 @@ async def get_queue_status() -> QueueStatusResponse:
     pending = len([t for t in _queue_tasks.values() if t.status == "pending"])
     running = len([t for t in _queue_tasks.values() if t.status == "running"])
     completed = len([t for t in _queue_tasks.values() if t.status in ["completed", "failed", "cancelled"]])
-    
+
     config = {
         "max_concurrent_tasks": 4,
         "priority_levels": ["critical", "high", "normal", "low"],
-        "resource_tracking": True
+        "resource_tracking": True,
     }
-    
-    return QueueStatusResponse(
-        pending=pending,
-        running=running,
-        completed=completed,
-        config=config
-    )
+
+    return QueueStatusResponse(pending=pending, running=running, completed=completed, config=config)
 
 
 @app.get("/api/v1/queue/tasks")
-async def list_queue_tasks(
-    status: Optional[str] = None,
-    limit: int = 20
-) -> TasksResponse:
+async def list_queue_tasks(status: Optional[str] = None, limit: int = 20) -> TasksResponse:
     """List tasks in the queue"""
     tasks = list(_queue_tasks.values())
-    
+
     # Apply status filter
     if status:
         tasks = [t for t in tasks if t.status == status]
-    
+
     # Sort by created_at descending and limit
     tasks.sort(key=lambda t: t.created_at, reverse=True)
     tasks = tasks[:limit]
-    
+
     return TasksResponse(tasks=tasks)
 
 
@@ -766,7 +731,7 @@ async def get_task_details(task_id: str) -> TaskResponse:
     """Get specific task details"""
     if task_id not in _queue_tasks:
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
-    
+
     return _queue_tasks[task_id]
 
 
@@ -775,7 +740,7 @@ async def create_task(request: TaskCreateRequest):
     """Create a new task"""
     task_id = generate_task_id(request.task_type)
     current_time = time.time()
-    
+
     task = TaskResponse(
         task_id=task_id,
         task_type=request.task_type,
@@ -783,15 +748,15 @@ async def create_task(request: TaskCreateRequest):
         status="pending",
         dependencies=request.dependencies,
         resources=request.resources,
-        created_at=current_time
+        created_at=current_time,
     )
-    
+
     _queue_tasks[task_id] = task
-    
+
     return {
         "status": "success",
         "task_id": task_id,
-        "position": len([t for t in _queue_tasks.values() if t.status == "pending"])
+        "position": len([t for t in _queue_tasks.values() if t.status == "pending"]),
     }
 
 
@@ -800,45 +765,38 @@ async def cancel_task(task_id: str):
     """Cancel a pending or running task"""
     if task_id not in _queue_tasks:
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
-    
+
     task = _queue_tasks[task_id]
-    
+
     if task.status in ["completed", "failed", "cancelled"]:
         raise HTTPException(status_code=400, detail=f"Cannot cancel task in '{task.status}' state")
-    
+
     task.status = "cancelled"
     task.completed_at = time.time()
-    
-    return {
-        "success": True,
-        "message": f"Task '{task_id}' cancelled successfully"
-    }
+
+    return {"success": True, "message": f"Task '{task_id}' cancelled successfully"}
 
 
 @app.get("/api/v1/queue/history")
-async def get_task_history(
-    limit: int = 50,
-    since: Optional[str] = None,
-    status: Optional[str] = None
-):
+async def get_task_history(limit: int = 50, since: Optional[str] = None, status: Optional[str] = None):
     """Get task execution history"""
     tasks = list(_queue_tasks.values())
-    
+
     # Apply filters
     if status:
         tasks = [t for t in tasks if t.status == status]
-    
+
     if since:
         try:
             since_timestamp = float(since)
             tasks = [t for t in tasks if t.created_at >= since_timestamp]
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid 'since' timestamp format")
-    
+
     # Sort by created_at descending and limit
     tasks.sort(key=lambda t: t.created_at, reverse=True)
     tasks = tasks[:limit]
-    
+
     return {"history": [task.dict() for task in tasks]}
 
 
@@ -846,7 +804,7 @@ async def get_task_history(
 async def clear_task_history(status: Optional[str] = None):
     """Clear completed or failed tasks from history"""
     global _queue_tasks
-    
+
     if status:
         # Clear only tasks with specific status
         cleared_count = 0
@@ -855,7 +813,7 @@ async def clear_task_history(status: Optional[str] = None):
             if task.status == status:
                 to_remove.append(task_id)
                 cleared_count += 1
-        
+
         for task_id in to_remove:
             del _queue_tasks[task_id]
     else:
@@ -866,8 +824,8 @@ async def clear_task_history(status: Optional[str] = None):
             if task.status in ["completed", "failed", "cancelled"]:
                 to_remove.append(task_id)
                 cleared_count += 1
-        
+
         for task_id in to_remove:
             del _queue_tasks[task_id]
-    
+
     return {"cleared": cleared_count}

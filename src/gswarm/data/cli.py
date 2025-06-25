@@ -31,13 +31,13 @@ def start(
 ):
     """Start KV storage server"""
     from .pool import start_server
-    
+
     # Parse memory size
     max_mem_bytes = parse_memory_size(max_memory)
-    
+
     logger.info(f"Starting KV storage server on {host}:{port}")
     logger.info(f"Maximum memory: {max_memory}")
-    
+
     start_server(host=host, port=port, max_mem_size=max_mem_bytes)
 
 
@@ -51,15 +51,11 @@ def write(
     """Write key-value pair"""
     try:
         url = f"{get_kv_api_url(host)}/write"
-        data = {
-            "key": key,
-            "value": value,
-            "persist": persist
-        }
-        
+        data = {"key": key, "value": value, "persist": persist}
+
         response = requests.post(url, json=data)
         response.raise_for_status()
-        
+
         logger.info(f"Successfully wrote key '{key}' (persist={persist})")
     except Exception as e:
         logger.error(f"Failed to write key '{key}': {e}")
@@ -75,7 +71,7 @@ def read(
         url = f"{get_kv_api_url(host)}/read/{key}"
         response = requests.get(url)
         response.raise_for_status()
-        
+
         data = response.json()
         if data["found"]:
             logger.info(f"Key '{key}': {data['value']}")
@@ -95,7 +91,7 @@ def release(
         url = f"{get_kv_api_url(host)}/release/{key}"
         response = requests.delete(url)
         response.raise_for_status()
-        
+
         logger.info(f"Successfully released key '{key}'")
     except Exception as e:
         logger.error(f"Failed to release key '{key}': {e}")
@@ -110,14 +106,11 @@ def send(
     """Send key to another KV storage server"""
     try:
         url = f"{get_kv_api_url(host)}/send"
-        data = {
-            "key": key,
-            "url": target
-        }
-        
+        data = {"key": key, "url": target}
+
         response = requests.post(url, json=data)
         response.raise_for_status()
-        
+
         logger.info(f"Successfully sent key '{key}' to {target}")
     except Exception as e:
         logger.error(f"Failed to send key '{key}' to {target}: {e}")
@@ -132,19 +125,23 @@ def stats(
         url = f"{get_kv_api_url(host)}/stats"
         response = requests.get(url)
         response.raise_for_status()
-        
+
         stats = response.json()["stats"]
-        
+
         logger.info("KV Storage Statistics:")
-        logger.info(f"  Memory Usage: {stats['current_size'] / (1024**3):.2f} GB / {stats['max_size'] / (1024**3):.2f} GB ({stats['usage_percent']:.1f}%)")
-        logger.info(f"  Keys: {stats['total_keys']} total ({stats['persistent_keys']} persistent, {stats['volatile_keys']} volatile)")
-        
-        mem_info = stats.get('memory_info', {})
+        logger.info(
+            f"  Memory Usage: {stats['current_size'] / (1024**3):.2f} GB / {stats['max_size'] / (1024**3):.2f} GB ({stats['usage_percent']:.1f}%)"
+        )
+        logger.info(
+            f"  Keys: {stats['total_keys']} total ({stats['persistent_keys']} persistent, {stats['volatile_keys']} volatile)"
+        )
+
+        mem_info = stats.get("memory_info", {})
         if mem_info:
             logger.info(f"  System Memory: {mem_info.get('percent', 0):.1f}% used")
             logger.info(f"    Available: {mem_info.get('available', 0) / (1024**3):.2f} GB")
             logger.info(f"    Total: {mem_info.get('total', 0) / (1024**3):.2f} GB")
-            
+
     except Exception as e:
         logger.error(f"Failed to get stats: {e}")
 
@@ -152,26 +149,26 @@ def stats(
 def parse_memory_size(size_str: str) -> int:
     """Parse memory size string to bytes"""
     size_str = size_str.upper().strip()
-    
+
     # Check suffixes in order from longest to shortest to avoid partial matches
     suffixes = [
-        ('TB', 1024**4),
-        ('GB', 1024**3),
-        ('MB', 1024**2),
-        ('KB', 1024),
-        ('B', 1),
+        ("TB", 1024**4),
+        ("GB", 1024**3),
+        ("MB", 1024**2),
+        ("KB", 1024),
+        ("B", 1),
     ]
-    
+
     for suffix, multiplier in suffixes:
         if size_str.endswith(suffix):
-            number_str = size_str[:-len(suffix)].strip()
+            number_str = size_str[: -len(suffix)].strip()
             if number_str:  # Make sure we have a number
                 try:
                     number = float(number_str)
                     return int(number * multiplier)
                 except ValueError:
                     continue
-    
+
     # If no suffix matched, assume bytes
     try:
         return int(size_str)

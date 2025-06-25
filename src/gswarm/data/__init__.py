@@ -10,7 +10,7 @@ from .pool import (
 
 __all__ = [
     "DataStorage",
-    "DataServer", 
+    "DataServer",
     "start_server",
     "get_storage",
     "set_max_memory",
