@@ -38,16 +38,16 @@ pip install pyyaml requests numpy
 
 ```bash
 # Estimation mode with offline scheduling (fastest)
-python baseline.py --gpus 2,3,4,5,10 --simulate false --mode offline
+python baseline.py --gpus 4 --simulate false --mode offline
 
 # Simulation mode with actual model calls
-python baseline.py --gpus 2,3,4,5,10 --simulate true --mode offline
+python baseline.py --gpus 4 --simulate true --mode offline
 
 # Online mode for latency analysis
-python baseline.py --gpus 2,3,4,5,10 --simulate false --mode online
+python baseline.py --gpus 4 --simulate false --mode online
 
 # Custom configuration files
-python baseline.py --gpus 0,1,2,3 --simulate false --mode offline \
+python baseline.py --gpus 4 --simulate false --mode offline \
   --config custom_config.yaml --requests custom_requests.yaml
 ```
 
@@ -55,7 +55,7 @@ python baseline.py --gpus 0,1,2,3 --simulate false --mode offline \
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `--gpus` | string | Yes | Comma-separated GPU IDs (e.g., `2,3,4,5,10`) |
+| `--gpus` | string | Yes | Number of GPUs (e.g., `4`) |
 | `--simulate` | boolean | No | Use actual model calls (`true`) or estimates (`false`) |
 | `--mode` | string | No | Scheduling mode: `offline` or `online` |
 | `--config` | path | No | System configuration file (default: `system_config.yaml`) |
@@ -209,7 +209,7 @@ The scheduler reports comprehensive metrics:
 ```
 2024-01-01 10:00:00 - Starting baseline scheduler with 5 requests
 2024-01-01 10:00:00 - Mode: offline, Simulate: false
-2024-01-01 10:00:00 - Available GPUs: [2, 3, 4, 5, 10]
+2024-01-01 10:00:00 - Available GPUs: [0, 1, 2, 3]
 2024-01-01 10:00:01 - Scheduling node generate of request req_001 on GPU 2
 2024-01-01 10:00:09 - Completed node generate of request req_001 on GPU 2 (execution time: 8.50s)
 
@@ -272,19 +272,39 @@ def _get_model_switch_time(self, from_model, to_model):
 Use the scheduler to establish baseline performance metrics for your workflow configurations:
 
 ```bash
-python baseline.py --gpus 0,1,2,3 --simulate false --mode offline
+python baseline.py --gpus 3 --simulate false --mode offline
 ```
 
 ### 2. Latency Analysis
 Analyze request completion times in streaming scenarios:
 
 ```bash
-python baseline.py --gpus 0,1,2,3 --simulate false --mode online
+python baseline.py --gpus 3 --simulate false --mode online
 ```
 
 ### 3. Resource Planning
 Understand GPU utilization patterns for capacity planning:
 
 ```bash
-python baseline.py --gpus 0,1,2,3,4,5,6,7 --simulate true --mode offline
+python baseline.py --gpus 3 --simulate true --mode offline
+```
+
+## How to check the execution log
+
+- Overlap Detection: Checks that no two executions on the same GPU overlap in time
+- Data Validation: Validates JSON structure and required fields
+- Detailed Reporting: Shows conflicts with specific time ranges and durations
+
+```bash
+# Check the default file
+python check.py
+
+# Check a specific file
+python check.py my_execution_log.json
+
+# Save conflicts to a report file
+python check.py --save-report
+
+# Quiet mode (only show pass/fail)
+python check.py --quiet
 ```
