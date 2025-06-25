@@ -908,7 +908,7 @@ async def estimate_model(instance_id: str, request: EstimateRequest):
             )
 
         # Get estimation from cost module
-        estimated_time = get_estimation_cost(model_type, instance.model_name, instance.device, *data_features)
+        estimated_time = get_estimation_cost(model_type, instance.model_name, instance.device, data_features)
 
         return StandardResponse(
             success=True,
@@ -975,7 +975,7 @@ async def estimate_model_direct(request: DirectEstimateRequest):
             )
 
         # Get estimation from cost module
-        estimated_time = get_estimation_cost(model_name, device, *data_features)
+        estimated_time = get_estimation_cost(model_name, device, data_features)
 
         return StandardResponse(
             success=True,
