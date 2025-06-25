@@ -20,6 +20,8 @@ import socket
 import random
 import string
 
+from .cost import get_estimation_cost
+
 # Disable flash attention and xformers to avoid compatibility issues
 os.environ["DISABLE_FLASH_ATTN"] = "1"
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
@@ -160,6 +162,10 @@ class DownloadRequest(BaseModel):
     source: str = "huggingface"
 
 class CallRequest(BaseModel):
+    instance_id: str
+    data: Dict[str, Any]
+
+class EstimateRequest(BaseModel):
     instance_id: str
     data: Dict[str, Any]
 
@@ -798,6 +804,77 @@ async def call_model(instance_id: str, request: CallRequest):
             
     except Exception as e:
         logger.error(f"Inference failed for instance {instance_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/standalone/estimate/{instance_id}")
+async def estimate_model(instance_id: str, request: EstimateRequest):
+    """Get estimated execution time for model inference without actually running it"""
+    try:
+        if instance_id not in state.serving_instances:
+            raise HTTPException(status_code=404, detail=f"Instance {instance_id} not found")
+        
+        instance = state.serving_instances[instance_id]
+        model_type = get_model_type(instance.model_name)
+        
+        # Extract input data for feature analysis
+        input_data = request.data
+        
+        # Extract data features for cost estimation
+        data_features = []
+        
+        if model_type == "llm":
+            if "prompt" not in input_data:
+                raise HTTPException(status_code=400, detail="LLM models require 'prompt' in data")
+            
+            prompt = input_data["prompt"]
+            max_length = input_data.get("max_length", 100)
+            temperature = input_data.get("temperature", 0.7)
+            
+            # Add relevant features for cost estimation
+            data_features.extend([
+                f"prompt_length:{len(prompt)}",
+                f"max_length:{max_length}",
+                f"temperature:{temperature}"
+            ])
+            
+        elif model_type == "diffusion":
+            if "prompt" not in input_data:
+                raise HTTPException(status_code=400, detail="Diffusion models require 'prompt' in data")
+            
+            prompt = input_data["prompt"]
+            num_inference_steps = input_data.get("steps", 20)
+            guidance_scale = input_data.get("guidance_scale", 7.5)
+            
+            # Add relevant features for cost estimation
+            data_features.extend([
+                f"prompt_length:{len(prompt)}",
+                f"steps:{num_inference_steps}",
+                f"guidance_scale:{guidance_scale}"
+            ])
+        
+        # Get estimation from cost module
+        estimated_time = get_estimation_cost(
+            instance.model_name, 
+            instance.device, 
+            *data_features
+        )
+        
+        return StandardResponse(
+            success=True,
+            message="Estimation completed",
+            data={
+                "estimated_execution_time": estimated_time,
+                "estimated_time_unit": "seconds",
+                "model_type": model_type,
+                "instance_id": instance_id,
+                "device": instance.device,
+                "data_features": data_features,
+                "timestamp": datetime.now().isoformat()
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Estimation failed for instance {instance_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/standalone/status")
