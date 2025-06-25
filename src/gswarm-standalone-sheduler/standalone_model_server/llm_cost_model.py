@@ -113,19 +113,19 @@ class LLMCostModel:
             print(f"Error initializing model: {e}")
             return None
 
-    def predict(self, input_prompt: str) -> int:
+    def predict(self, prompt_length) -> int:
         """
         Predict the number of output tokens for a given input prompt using the trained model.
         """
         if not self.cost_model:
             raise RuntimeError("Model is not trained.")
 
-        tokenizer = tiktoken.encoding_for_model("gpt-4o")
-        input_tokens = tokenizer.encode(input_prompt)
+        # tokenizer = tiktoken.encoding_for_model("gpt-4o")
+        # input_tokens = tokenizer.encode(input_prompt)
 
-        # Use the model to predict the number of output tokens
-        input_length = len(input_tokens)
-        prediction = self.cost_model.predict([[input_length]])
+        # # Use the model to predict the number of output tokens
+        # input_length = len(input_tokens)
+        prediction = self.cost_model.predict([[prompt_length]])
 
         return int(prediction[0]) if prediction else 0
 

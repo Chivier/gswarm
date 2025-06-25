@@ -10,17 +10,14 @@ def get_estimation_cost(model_type: str, model_name: str, device: str, *data_fea
     """
     Get the estimation cost of a model for given data features.
     """
-    if model_type == "llm":
-        model_name = model_name[4:]  # Remove 'llm-' prefix
-        return llm_cost_model.predict(*data_features)
-    elif model_type == "diffusion":
-        model_name = model_name[3:]  # Remove 'sd' prefix
-        if len(data_features) < 3:
-            return sd_cost_model.predict(model_name, device, *data_features)
+    current_feature = data_features[-1] if data_features else None
+    if current_feature:
+        if model_type == "llm":
+            return llm_cost_model.predict(*data_features, current_feature["prompt_length"])
+        elif model_type == "diffusion":
+            sd_cost_model.update_model(model_name, device, current_feature["height"], current_feature["width"])
         else:
-            sd_cost_model.update_model(model_name, device, *data_features)
-    else:
-        return random.uniform(1.0, 100)  # Return a random cost for unknown models
+            return random.uniform(1.0, 100)  # Return a random cost for unknown models
 
 
 if __name__ == "__main__":
