@@ -21,6 +21,7 @@ from typing import List, Dict, Any
 from datetime import datetime, timedelta
 import concurrent.futures
 from dataclasses import dataclass
+from cost import get_estimation_cost
 
 # Configuration
 SERVER_URL = "http://localhost:8000"

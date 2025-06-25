@@ -20,7 +20,7 @@ import socket
 import random
 import string
 
-from .cost import get_estimation_cost
+from cost import get_estimation_cost
 
 # Disable flash attention and xformers to avoid compatibility issues
 os.environ["DISABLE_FLASH_ATTN"] = "1"
