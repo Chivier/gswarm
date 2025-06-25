@@ -9,7 +9,7 @@ from datetime import datetime
 app = typer.Typer(help="Task queue management operations")
 
 
-def get_api_url(host: str = "localhost:9011") -> str:
+def get_api_url(host: str = "localhost:9015") -> str:
     """Ensure host has http:// prefix"""
     if not host.startswith("http://") and not host.startswith("https://"):
         return f"http://{host}"
@@ -18,7 +18,7 @@ def get_api_url(host: str = "localhost:9011") -> str:
 
 @app.command()
 def status(
-    host: str = typer.Option("localhost:9011", "--host", help="Client API address"),
+    host: str = typer.Option("localhost:9015", "--host", help="Client API address"),
 ):
     """Get queue status"""
     try:
@@ -46,7 +46,7 @@ def status(
 def tasks(
     status: Optional[str] = typer.Option(None, "--status", "-s", help="Filter by status"),
     limit: int = typer.Option(20, "--limit", "-l", help="Number of tasks to show"),
-    host: str = typer.Option("localhost:9011", "--host", help="Client API address"),
+    host: str = typer.Option("localhost:9015", "--host", help="Client API address"),
 ):
     """List tasks in the queue"""
     try:
@@ -99,7 +99,7 @@ def tasks(
 @app.command()
 def cancel(
     task_id: str = typer.Argument(..., help="Task ID to cancel"),
-    host: str = typer.Option("localhost:9011", "--host", help="Client API address"),
+    host: str = typer.Option("localhost:9015", "--host", help="Client API address"),
 ):
     """Cancel a pending or running task"""
     try:
@@ -127,7 +127,7 @@ def cancel(
 def history(
     limit: int = typer.Option(50, "--limit", "-l", help="Number of records to show"),
     since: Optional[str] = typer.Option(None, "--since", help="Show tasks since timestamp"),
-    host: str = typer.Option("localhost:9011", "--host", help="Client API address"),
+    host: str = typer.Option("localhost:9015", "--host", help="Client API address"),
 ):
     """Get task execution history"""
     try:
@@ -172,7 +172,7 @@ def history(
 def clear(
     status: Optional[str] = typer.Option(None, "--status", "-s", help="Clear only tasks with this status"),
     force: bool = typer.Option(False, "--force", "-f", help="Force clear without confirmation"),
-    host: str = typer.Option("localhost:9011", "--host", help="Client API address"),
+    host: str = typer.Option("localhost:9015", "--host", help="Client API address"),
 ):
     """Clear completed or failed tasks from history"""
     if not force:
