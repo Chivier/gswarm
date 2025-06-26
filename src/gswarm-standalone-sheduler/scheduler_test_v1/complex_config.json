@@ -23,8 +23,8 @@
     "llama2_70b_base": {
       "name": "Llama2-70B-Base",
       "type": "llm",
-      "memory_gb": 70,
-      "gpus_required": 4,
+      "memory_gb": 140,
+      "gpus_required": 8,
       "load_time_seconds": 80,
       "tokens_per_second": 12,
       "token_mean": 1536,
