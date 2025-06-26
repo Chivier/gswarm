@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv
+
+# Logs
+*.log
+logs/
+
+# Execution logs
+*_execution_log.json
+offline_execution_log.json
+baseline_execution_log.json
+
+# Benchmark results and plots
+benchmark_results/
+*.png
+*.pdf
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test outputs
+test_*/
+tmp/
+
+# Cache
+.cache/
+*.cache
