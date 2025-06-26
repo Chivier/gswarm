@@ -183,3 +183,5 @@ llama-test.pdf
 .gswarm_model_data
 .gswarm_profiler_data
 output.json
+
+CLAUDE.md
