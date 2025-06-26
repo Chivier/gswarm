@@ -1,0 +1,96 @@
+{
+  "models": {
+    "llm7b": {
+      "name": "LLM-7B",
+      "memory_gb": 14,
+      "gpus_required": 1,
+      "load_time_seconds": 10,
+      "tokens_per_second": 50,
+      "token_mean": 512,
+      "token_std": 128
+    },
+    "llm13b": {
+      "name": "LLM-13B",
+      "memory_gb": 26,
+      "gpus_required": 2,
+      "load_time_seconds": 20,
+      "tokens_per_second": 30,
+      "token_mean": 768,
+      "token_std": 192
+    },
+    "stable_diffusion": {
+      "name": "Stable-Diffusion",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 6,
+      "inference_time_mean": 2.0,
+      "inference_time_std": 0.5,
+      "config": {
+        "width": [512, 768, 1024],
+        "height": [512, 768, 1024]
+      }
+    }
+  },
+  "workflows": {
+    "workflow1": {
+      "name": "LLM to Image Generation",
+      "nodes": [
+        {
+          "id": "node1",
+          "model": "llm7b",
+          "inputs": ["user_prompt"],
+          "outputs": ["image_prompt"]
+        },
+        {
+          "id": "node2",
+          "model": "stable_diffusion",
+          "inputs": ["image_prompt"],
+          "outputs": ["generated_image"],
+          "config_options": ["width", "height"]
+        }
+      ],
+      "edges": [
+        {"from": "node1", "to": "node2"}
+      ]
+    },
+    "workflow2": {
+      "name": "LLM Analysis",
+      "nodes": [
+        {
+          "id": "node1",
+          "model": "llm7b",
+          "inputs": ["user_prompt"],
+          "outputs": ["initial_analysis"]
+        },
+        {
+          "id": "node2",
+          "model": "llm13b",
+          "inputs": ["initial_analysis"],
+          "outputs": ["deep_analysis"]
+        },
+        {
+          "id": "node3",
+          "model": "llm7b",
+          "inputs": ["deep_analysis"],
+          "outputs": ["summary"]
+        }
+      ],
+      "edges": [
+        {"from": "node1", "to": "node2"},
+        {"from": "node2", "to": "node3"}
+      ]
+    },
+    "workflow3": {
+      "name": "Simple LLM Task",
+      "nodes": [
+        {
+          "id": "node1",
+          "model": "llm7b",
+          "inputs": ["user_prompt"],
+          "outputs": ["response"]
+        }
+      ],
+      "edges": []
+    }
+  }
+}

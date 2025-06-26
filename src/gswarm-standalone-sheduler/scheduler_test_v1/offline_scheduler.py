@@ -16,6 +16,7 @@ import logging
 import argparse
 from pathlib import Path
 import sys
+import numpy as np
 
 from scheduler_component import (
     ModelInfo, WorkflowNode, NodeExecution, GPUState, ScheduledTask
@@ -106,6 +107,9 @@ class OptimizedOfflineScheduler:
         self.model_switch_count = 0
         self.total_switch_time = 0.0
         self.gpu_utilization: Dict[int, float] = {i: 0.0 for i in gpus}
+        self.task_waiting_times: List[float] = []
+        self.task_response_times: List[float] = []
+        self.request_response_times: Dict[str, float] = {}
     
     def _setup_logger(self) -> logging.Logger:
         """Setup logging configuration"""
@@ -189,10 +193,18 @@ class OptimizedOfflineScheduler:
         """Parse all workflow requests into tasks"""
         all_tasks = []
         
+        # Normalize timestamps to start from 0
+        first_timestamp = None
+        if self.workflow_requests:
+            first_timestamp = datetime.fromisoformat(self.workflow_requests[0]['timestamp']).timestamp()
+        
         for request in self.workflow_requests:
             workflow_id = request['workflow_id']
             request_id = request['request_id']
             timestamp = datetime.fromisoformat(request['timestamp']).timestamp()
+            # Normalize timestamp
+            if first_timestamp:
+                timestamp = timestamp - first_timestamp
             node_execution_times = request.get('node_execution_times', {})
             
             if workflow_id not in self.workflows:
@@ -394,6 +406,9 @@ class OptimizedOfflineScheduler:
     
     def execute_schedule(self, gpu_allocation: Dict[int, List[Task]]):
         """Execute the scheduled tasks and create ScheduledTask objects"""
+        # Track request start/end times
+        request_times = {}
+        
         for gpu_id, tasks in gpu_allocation.items():
             current_time = 0.0
             current_model = None
@@ -407,6 +422,10 @@ class OptimizedOfflineScheduler:
                     self.total_switch_time += switch_time
                     current_model = task.model_type
                     self.gpu_states[gpu_id].current_model = current_model
+                
+                # Calculate waiting time (from ready time to start time)
+                waiting_time = current_time - task.ready_time
+                self.task_waiting_times.append(waiting_time)
                 
                 # Create NodeExecution
                 node_exec = NodeExecution(
@@ -431,12 +450,26 @@ class OptimizedOfflineScheduler:
                 )
                 self.scheduled_tasks.append(scheduled_task)
                 
+                # Track request times
+                if task.request_id not in request_times:
+                    request_times[task.request_id] = {"start": float('inf'), "end": 0}
+                request_times[task.request_id]["start"] = min(request_times[task.request_id]["start"], task.ready_time)
+                request_times[task.request_id]["end"] = max(request_times[task.request_id]["end"], current_time + task.estimated_time)
+                
+                # Calculate task response time
+                response_time = (current_time + task.estimated_time) - task.ready_time
+                self.task_response_times.append(response_time)
+                
                 # Update GPU state
                 self.gpu_states[gpu_id].total_busy_time += task.estimated_time
                 self.gpu_states[gpu_id].execution_count += 1
                 
                 # Update current time
                 current_time += task.estimated_time
+        
+        # Calculate request response times
+        for request_id, times in request_times.items():
+            self.request_response_times[request_id] = times["end"] - times["start"]
     
     def calculate_metrics(self) -> Dict:
         """Calculate performance metrics"""
@@ -445,13 +478,36 @@ class OptimizedOfflineScheduler:
         
         makespan = max(task.end_time for task in self.scheduled_tasks)
         
+        # Calculate P99 and average metrics
+        avg_waiting_time = np.mean(self.task_waiting_times) if self.task_waiting_times else 0.0
+        p99_waiting_time = np.percentile(self.task_waiting_times, 99) if self.task_waiting_times else 0.0
+        avg_response_time = np.mean(self.task_response_times) if self.task_response_times else 0.0
+        p99_response_time = np.percentile(self.task_response_times, 99) if self.task_response_times else 0.0
+        
+        request_response_list = list(self.request_response_times.values())
+        avg_request_response_time = np.mean(request_response_list) if request_response_list else 0.0
+        p99_request_response_time = np.percentile(request_response_list, 99) if request_response_list else 0.0
+        
         metrics = {
             'total_tasks': len(self.scheduled_tasks),
+            'total_requests': len(self.request_response_times),
+            'completed_requests': len(self.request_response_times),
             'total_model_switches': self.model_switch_count,
             'total_switch_time': self.total_switch_time,
             'estimated_makespan': makespan,
             'average_throughput': len(self.scheduled_tasks) / makespan if makespan > 0 else 0,
             'switch_overhead': self.total_switch_time / makespan * 100 if makespan > 0 else 0,
+            
+            # Task-level metrics
+            'avg_waiting_time': avg_waiting_time,
+            'p99_waiting_time': p99_waiting_time,
+            'avg_response_time': avg_response_time,
+            'p99_response_time': p99_response_time,
+            
+            # Request-level metrics
+            'avg_request_response_time': avg_request_response_time,
+            'p99_request_response_time': p99_request_response_time,
+            
             'gpu_utilization': {},
             'gpu_execution_count': {}
         }
@@ -506,8 +562,19 @@ class OptimizedOfflineScheduler:
             return
         
         self.logger.info(f"Total execution time: {metrics['estimated_makespan']:.2f} seconds")
+        self.logger.info(f"Total requests: {metrics.get('total_requests', 'N/A')} (completed: {metrics.get('completed_requests', 'N/A')})")
         self.logger.info(f"Total tasks: {metrics['total_tasks']}")
         self.logger.info(f"Average throughput: {metrics['average_throughput']:.2f} tasks/second")
+        
+        self.logger.info(f"\nLatency metrics:")
+        self.logger.info(f"  Task-level:")
+        self.logger.info(f"    Average waiting time: {metrics['avg_waiting_time']:.2f} seconds")
+        self.logger.info(f"    P99 waiting time: {metrics['p99_waiting_time']:.2f} seconds")
+        self.logger.info(f"    Average response time: {metrics['avg_response_time']:.2f} seconds")
+        self.logger.info(f"    P99 response time: {metrics['p99_response_time']:.2f} seconds")
+        self.logger.info(f"  Request-level:")
+        self.logger.info(f"    Average response time: {metrics['avg_request_response_time']:.2f} seconds")
+        self.logger.info(f"    P99 response time: {metrics['p99_request_response_time']:.2f} seconds")
         
         self.logger.info(f"\nModel switching:")
         self.logger.info(f"  Total switches: {metrics['total_model_switches']}")
@@ -533,7 +600,8 @@ class OptimizedOfflineScheduler:
         
         log_data = {
             "summary": {
-                "total_requests": len(request_times),
+                "total_requests": metrics.get('total_requests', len(request_times)),
+                "completed_requests": metrics.get('completed_requests', len(request_times)),
                 "total_nodes_executed": len(self.scheduled_tasks),
                 "mode": self.mode,
                 "simulate": self.simulate,
@@ -541,11 +609,24 @@ class OptimizedOfflineScheduler:
                 "makespan": metrics.get('estimated_makespan', 0),
                 "total_model_switches": metrics.get('total_model_switches', 0),
                 "total_switch_time": metrics.get('total_switch_time', 0),
+                "avg_waiting_time": metrics.get('avg_waiting_time', 0),
+                "p99_waiting_time": metrics.get('p99_waiting_time', 0),
+                "avg_response_time": metrics.get('avg_response_time', 0),
+                "p99_response_time": metrics.get('p99_response_time', 0),
+                "avg_request_response_time": metrics.get('avg_request_response_time', 0),
+                "p99_request_response_time": metrics.get('p99_request_response_time', 0),
             },
             "executions": []
         }
         
+        # Create a map of task to waiting time
+        task_to_waiting_time = {}
+        for i, task in enumerate(self.scheduled_tasks):
+            if i < len(self.task_waiting_times):
+                task_to_waiting_time[f"{task.node.request_id}_{task.node.node_id}"] = self.task_waiting_times[i]
+        
         for task in sorted(self.scheduled_tasks, key=lambda t: t.start_time):
+            task_key = f"{task.node.request_id}_{task.node.node_id}"
             log_data["executions"].append({
                 "request_id": task.node.request_id,
                 "workflow_id": task.node.workflow_id,
@@ -556,6 +637,8 @@ class OptimizedOfflineScheduler:
                 "end_time": task.end_time,
                 "execution_time": task.node.estimated_time,
                 "estimated_time": task.node.estimated_time,
+                "switch_time": task.switch_time,
+                "waiting_time": task_to_waiting_time.get(task_key, 0.0),
             })
         
         with open("offline_execution_log.json", "w") as f:
