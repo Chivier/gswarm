@@ -120,6 +120,7 @@ class NodeExecution:
     start_time: Optional[float] = None
     end_time: Optional[float] = None
     gpu_id: Optional[int] = None
+    gpu_ids: Optional[List[int]] = None  # All GPUs for multi-GPU models
     instance_id: Optional[str] = None
     estimated_time: Optional[float] = None
 
@@ -276,8 +277,8 @@ class BaselineScheduler:
 
         return transfer_time + overhead
 
-    def _find_available_gpu(self, model_name: str, current_time: float) -> Optional[int]:
-        """Find an available GPU for the model at current time"""
+    def _find_available_gpu(self, model_name: str, current_time: float) -> Optional[List[int]]:
+        """Find available GPU(s) for the model at current time"""
         model_info = self.models[model_name]
         required_gpus = model_info.gpus_required
 
@@ -291,12 +292,12 @@ class BaselineScheduler:
                 if gpu_state.available_at <= current_time:
                     # Prefer GPU with same model already loaded
                     if gpu_state.current_model == model_name:
-                        return gpu_id
+                        return [gpu_id]
                     elif best_gpu is None or gpu_state.available_at < best_available_time:
                         best_gpu = gpu_id
                         best_available_time = gpu_state.available_at
 
-            return best_gpu
+            return [best_gpu] if best_gpu is not None else None
 
         # For multi-GPU models (simplified: use consecutive GPUs)
         else:
@@ -306,7 +307,7 @@ class BaselineScheduler:
                 # Check if all GPUs will be available
                 max_available_time = max(self.gpu_states[gpu_id].available_at for gpu_id in consecutive_gpus)
                 if max_available_time <= current_time:
-                    return consecutive_gpus[0]  # Return first GPU of the group
+                    return consecutive_gpus  # Return all GPUs in the group
 
         return None
 
@@ -471,24 +472,29 @@ class BaselineScheduler:
             return request.node_execution_times.get(node_exec.node_id, 10.0)
 
     def _schedule_node_execution(self, node_exec: NodeExecution, request: Request):
-        """Schedule a node execution on its assigned GPU"""
-        gpu_id = node_exec.gpu_id
-        gpu_state = self.gpu_states[gpu_id]
+        """Schedule a node execution on its assigned GPU(s)"""
         model_name = node_exec.model_name
+        model_info = self.models[model_name]
+        
+        # Get all GPUs involved
+        gpu_ids = node_exec.gpu_ids if node_exec.gpu_ids else [node_exec.gpu_id]
+        
+        # Calculate when this node can actually start (when all required GPUs are available)
+        start_time = max(self.gpu_states[gpu_id].available_at for gpu_id in gpu_ids)
+        start_time = max(self.current_sim_time, start_time)
 
-        # Calculate when this node can actually start
-        start_time = max(self.current_sim_time, gpu_state.available_at)
-
-        # Handle model switching
+        # Handle model switching on primary GPU (for logging)
+        primary_gpu_id = node_exec.gpu_id
+        primary_gpu_state = self.gpu_states[primary_gpu_id]
         switch_time = 0.0
-        if gpu_state.current_model != model_name:
-            switch_time = self._get_model_switch_time(gpu_state.current_model, model_name)
+        
+        if primary_gpu_state.current_model != model_name:
+            switch_time = self._get_model_switch_time(primary_gpu_state.current_model, model_name)
             logger.info(
-                f"[{start_time:.2f}s] Scheduling model switch on GPU {gpu_id} "
-                f"from {gpu_state.current_model} to {model_name} "
+                f"[{start_time:.2f}s] Scheduling model switch on GPU(s) {gpu_ids} "
+                f"from {primary_gpu_state.current_model} to {model_name} "
                 f"(switch time: {switch_time:.2f}s)"
             )
-            gpu_state.current_model = model_name
 
         # Calculate execution time
         execution_time = self._estimate_execution_time(node_exec, request)
@@ -498,9 +504,12 @@ class BaselineScheduler:
         node_exec.start_time = start_time + switch_time
         node_exec.end_time = node_exec.start_time + execution_time
 
-        # Update GPU availability
-        gpu_state.available_at = node_exec.end_time
-        gpu_state.busy = True
+        # Update ALL GPU states involved
+        for gpu_id in gpu_ids:
+            gpu_state = self.gpu_states[gpu_id]
+            gpu_state.available_at = node_exec.end_time
+            gpu_state.busy = True
+            gpu_state.current_model = model_name
 
         # Schedule completion event
         completion_event = Event(
@@ -510,7 +519,7 @@ class BaselineScheduler:
 
         logger.info(
             f"[{self.current_sim_time:.2f}s] Scheduled node {node_exec.node_id} "
-            f"of request {node_exec.request_id} on GPU {gpu_id} "
+            f"of request {node_exec.request_id} on GPU(s) {gpu_ids} "
             f"(start: {node_exec.start_time:.2f}s, end: {node_exec.end_time:.2f}s)"
         )
 
@@ -520,14 +529,16 @@ class BaselineScheduler:
         node_exec.status = "completed"
         self.completed_executions.append(node_exec)
 
-        # Update GPU state
-        gpu_state = self.gpu_states[node_exec.gpu_id]
-        if gpu_state.available_at <= self.current_sim_time:
-            gpu_state.busy = False
+        # Update GPU state for ALL GPUs involved
+        gpu_ids = node_exec.gpu_ids if node_exec.gpu_ids else [node_exec.gpu_id]
+        for gpu_id in gpu_ids:
+            gpu_state = self.gpu_states[gpu_id]
+            if gpu_state.available_at <= self.current_sim_time:
+                gpu_state.busy = False
 
         logger.info(
             f"[{self.current_sim_time:.2f}s] Completed node {node_exec.node_id} "
-            f"of request {node_exec.request_id} on GPU {node_exec.gpu_id}"
+            f"of request {node_exec.request_id} on GPU(s) {gpu_ids}"
         )
 
         # Update ready nodes
@@ -615,12 +626,13 @@ class BaselineScheduler:
             while self.node_queue:
                 node_exec = self.node_queue.popleft()
 
-                # Find available GPU
-                gpu_id = self._find_available_gpu(node_exec.model_name, self.current_sim_time)
+                # Find available GPU(s)
+                gpu_ids = self._find_available_gpu(node_exec.model_name, self.current_sim_time)
 
-                if gpu_id is not None:
-                    # Assign to GPU and schedule
-                    node_exec.gpu_id = gpu_id
+                if gpu_ids is not None:
+                    # Assign to GPU and schedule (use first GPU as primary)
+                    node_exec.gpu_id = gpu_ids[0]
+                    node_exec.gpu_ids = gpu_ids  # Store all GPUs for multi-GPU models
                     node_exec.status = "running"
 
                     # Find the corresponding request

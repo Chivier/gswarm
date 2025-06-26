@@ -1,546 +1,527 @@
 #!/usr/bin/env python3
 """
-Offline Scheduler for GSwarm Workflows
-Simple batch scheduling that respects topology and minimizes model switches
+Offline Batch Processing Scheduler for AI Workflows
+Implements optimized scheduling to minimize model switching overhead while maintaining dependencies
 """
 
-import argparse
 import json
 import yaml
 import time
-import requests
-from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple, Set
-from datetime import datetime
+from typing import Dict, List, Set, Tuple, Optional
 from dataclasses import dataclass, field
-from collections import deque, defaultdict
+from collections import defaultdict, deque
+from datetime import datetime
+import heapq
 import logging
+import argparse
+from pathlib import Path
 import sys
-import numpy as np
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("offline_scheduler.log"), logging.StreamHandler(sys.stdout)],
+from scheduler_component import (
+    ModelInfo, WorkflowNode, NodeExecution, GPUState, ScheduledTask
 )
-logger = logging.getLogger(__name__)
-
-# Constants
-SERVER_URL = "http://localhost:8000"
-PCIE_BANDWIDTH_GB_S = 16.0  # PCIe 4.0 x16 bandwidth in GB/s
 
 
 @dataclass
-class ModelInfo:
-    """Model configuration information"""
-
-    name: str
-    memory_gb: float
-    gpus_required: int
-    load_time_seconds: float
-    tokens_per_second: Optional[float] = None
-    token_mean: Optional[float] = None
-    token_std: Optional[float] = None
-    inference_time_mean: Optional[float] = None
-    inference_time_std: Optional[float] = None
-
-
-@dataclass
-class WorkflowNode:
-    """Workflow node definition"""
-
-    id: str
-    model: str
-    inputs: List[str]
-    outputs: List[str]
-    config_options: Optional[List[str]] = None
-
-
-@dataclass
-class WorkflowEdge:
-    """Workflow edge definition"""
-
-    from_node: str
-    to_node: str
-
-
-@dataclass
-class Workflow:
-    """Workflow definition"""
-
-    id: str
-    name: str
-    nodes: List[WorkflowNode]
-    edges: List[WorkflowEdge]
-
-    def get_dependencies(self) -> Dict[str, Set[str]]:
-        """Get dependency map: node -> set of nodes it depends on"""
-        deps = defaultdict(set)
-        for edge in self.edges:
-            deps[edge.to_node].add(edge.from_node)
-        # Add nodes with no dependencies
-        for node in self.nodes:
-            if node.id not in deps:
-                deps[node.id] = set()
-        return dict(deps)
-
-    def get_dependents(self) -> Dict[str, Set[str]]:
-        """Get dependent map: node -> set of nodes that depend on it"""
-        dependents = defaultdict(set)
-        for edge in self.edges:
-            dependents[edge.from_node].add(edge.to_node)
-        return dict(dependents)
-
-
-@dataclass
-class Request:
-    """Workflow request"""
-
-    request_id: str
-    timestamp: datetime
-    workflow_id: str
-    input_data: Dict[str, Any]
-    node_configs: Dict[str, Dict[str, Any]]
-    node_execution_times: Dict[str, float]
-
-
-@dataclass
-class NodeExecution:
-    """Execution state for a node"""
-
-    request_id: str
+class Task:
+    """Represents a single task to be executed"""
     workflow_id: str
     node_id: str
-    model_name: str
-    estimated_time: float
+    model_type: str
     dependencies: Set[str] = field(default_factory=set)
-    level: int = 0  # Topological level
+    ready_time: float = 0.0
+    priority: int = 0  # Lower value = higher priority
+    estimated_time: float = 0.0
+    request_id: str = ""
     
-    # Execution tracking
-    status: str = "pending"  # pending, ready, scheduled, completed
-    start_time: Optional[float] = None
-    end_time: Optional[float] = None
-    gpu_id: Optional[int] = None
-    
-    @property
-    def node_key(self) -> str:
-        return f"{self.request_id}_{self.node_id}"
+    def __lt__(self, other):
+        # For heap queue - prioritize by (priority, ready_time, workflow_id, node_id)
+        return (self.priority, self.ready_time, self.workflow_id, self.node_id) < \
+               (other.priority, other.ready_time, other.workflow_id, other.node_id)
 
 
 @dataclass
-class GPUState:
-    """GPU state tracking"""
-
-    gpu_id: int
-    current_model: Optional[str] = None
-    available_at: float = 0.0
-    total_busy_time: float = 0.0
-    execution_count: int = 0
-
-
-@dataclass
-class ScheduledTask:
-    """A scheduled task"""
+class WorkflowDAG:
+    """Represents a workflow as a directed acyclic graph"""
+    workflow_id: str
+    nodes: Dict[str, WorkflowNode]
+    edges: List[Tuple[str, str]]  # (from_node, to_node)
+    topological_order: List[str] = field(default_factory=list)
     
-    node: NodeExecution
-    gpu_id: int
-    start_time: float
-    end_time: float
-    switch_time: float = 0.0
+    def compute_topological_order(self):
+        """Compute topological ordering of nodes"""
+        in_degree = defaultdict(int)
+        adj_list = defaultdict(list)
+        
+        # Build adjacency list and in-degree map
+        for from_node, to_node in self.edges:
+            adj_list[from_node].append(to_node)
+            in_degree[to_node] += 1
+        
+        # Initialize queue with nodes having no dependencies
+        queue = deque([node_id for node_id in self.nodes if in_degree[node_id] == 0])
+        self.topological_order = []
+        
+        while queue:
+            node_id = queue.popleft()
+            self.topological_order.append(node_id)
+            
+            # Reduce in-degree for dependent nodes
+            for neighbor in adj_list[node_id]:
+                in_degree[neighbor] -= 1
+                if in_degree[neighbor] == 0:
+                    queue.append(neighbor)
+    
+    def get_dependencies(self, node_id: str) -> Set[str]:
+        """Get all dependencies for a given node"""
+        deps = set()
+        for from_node, to_node in self.edges:
+            if to_node == node_id:
+                deps.add(from_node)
+        return deps
 
 
-class OfflineScheduler:
-    """Simple offline scheduler that batches by model and uses all GPUs together"""
-
+class OptimizedOfflineScheduler:
+    """Optimized offline batch processing scheduler"""
+    
     def __init__(self, gpus: List[int], simulate: bool = False):
         self.gpus = gpus
+        self.num_gpus = len(gpus)
         self.simulate = simulate
         self.mode = "offline"
-        
-        # GPU states
-        self.gpu_states = {gpu_id: GPUState(gpu_id) for gpu_id in gpus}
+        self.logger = self._setup_logger()
         
         # Model and workflow definitions
         self.models: Dict[str, ModelInfo] = {}
-        self.workflows: Dict[str, Workflow] = {}
+        self.workflows: Dict[str, WorkflowDAG] = {}
+        self.workflow_requests: List[Dict] = []
         
-        # Queue of ready nodes grouped by model
-        self.ready_queue: Dict[str, List[NodeExecution]] = defaultdict(list)
-        self.pending_nodes: List[NodeExecution] = []
-        self.completed_nodes: Set[str] = set()
-        
-        # Scheduled tasks
+        # Scheduling state
+        self.gpu_states: List[GPUState] = [GPUState(gpu_id=i) for i in gpus]
+        self.task_queue: List[Task] = []  # Priority queue
+        self.completed_tasks: Set[Tuple[str, str]] = set()  # (request_id, node_id)
         self.scheduled_tasks: List[ScheduledTask] = []
         
         # Metrics
         self.model_switch_count = 0
         self.total_switch_time = 0.0
+        self.gpu_utilization: Dict[int, float] = {i: 0.0 for i in gpus}
+    
+    def _setup_logger(self) -> logging.Logger:
+        """Setup logging configuration"""
+        logger = logging.getLogger('OptimizedOfflineScheduler')
+        logger.setLevel(logging.INFO)
         
-        # Current loaded model across all GPUs
-        self.current_model: Optional[str] = None
-
+        # File handler
+        fh = logging.FileHandler('offline_scheduler.log', mode='w')
+        fh.setLevel(logging.INFO)
+        
+        # Console handler
+        ch = logging.StreamHandler(sys.stdout)
+        ch.setLevel(logging.INFO)
+        
+        # Formatter
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        fh.setFormatter(formatter)
+        ch.setFormatter(formatter)
+        
+        logger.addHandler(fh)
+        logger.addHandler(ch)
+        
+        return logger
+    
     def load_config(self, config_path: Path):
-        """Load system configuration"""
-        logger.info(f"Loading configuration from {config_path}")
-
-        with open(config_path, "r") as f:
-            if config_path.suffix == ".yaml":
+        """Load model and workflow configurations"""
+        with open(config_path, 'r') as f:
+            if config_path.suffix == '.yaml':
                 config = yaml.safe_load(f)
             else:
                 config = json.load(f)
-
+        
         # Load models
-        for model_id, model_data in config["models"].items():
-            self.models[model_id] = ModelInfo(
-                name=model_data["name"],
-                memory_gb=model_data["memory_gb"],
-                gpus_required=model_data["gpus_required"],
-                load_time_seconds=model_data["load_time_seconds"],
-                tokens_per_second=model_data.get("tokens_per_second"),
-                token_mean=model_data.get("token_mean"),
-                token_std=model_data.get("token_std"),
-                inference_time_mean=model_data.get("inference_time_mean"),
-                inference_time_std=model_data.get("inference_time_std"),
-            )
-
+        for model_id, model_data in config['models'].items():
+            # Extract only the fields that ModelInfo expects
+            model_info_data = {
+                'name': model_data['name'],
+                'memory_gb': model_data['memory_gb'],
+                'gpus_required': model_data['gpus_required'],
+                'load_time_seconds': model_data['load_time_seconds']
+            }
+            # Add optional fields if present
+            if 'tokens_per_second' in model_data:
+                model_info_data['tokens_per_second'] = model_data['tokens_per_second']
+            if 'token_mean' in model_data:
+                model_info_data['token_mean'] = model_data['token_mean']
+            if 'token_std' in model_data:
+                model_info_data['token_std'] = model_data['token_std']
+            if 'inference_time_mean' in model_data:
+                model_info_data['inference_time_mean'] = model_data['inference_time_mean']
+            if 'inference_time_std' in model_data:
+                model_info_data['inference_time_std'] = model_data['inference_time_std']
+            
+            self.models[model_id] = ModelInfo(**model_info_data)
+        
         # Load workflows
-        for workflow_id, workflow_data in config["workflows"].items():
-            nodes = []
-            for node_data in workflow_data["nodes"]:
-                nodes.append(
-                    WorkflowNode(
-                        id=node_data["id"],
-                        model=node_data["model"],
-                        inputs=node_data["inputs"],
-                        outputs=node_data["outputs"],
-                        config_options=node_data.get("config_options"),
-                    )
-                )
-
-            edges = []
-            for edge_data in workflow_data.get("edges", []):
-                edges.append(WorkflowEdge(from_node=edge_data["from"], to_node=edge_data["to"]))
-
-            workflow = Workflow(
-                id=workflow_id, 
-                name=workflow_data["name"], 
-                nodes=nodes, 
-                edges=edges
+        for workflow_id, workflow_data in config['workflows'].items():
+            dag = WorkflowDAG(
+                workflow_id=workflow_id,
+                nodes={node['id']: WorkflowNode(**node) for node in workflow_data['nodes']},
+                edges=[(e['from'], e['to']) for e in workflow_data.get('edges', [])]
             )
-            self.workflows[workflow_id] = workflow
-
-    def load_requests(self, requests_path: Path) -> List[Request]:
+            dag.compute_topological_order()
+            self.workflows[workflow_id] = dag
+        
+        self.logger.info(f"Loaded {len(self.models)} models and {len(self.workflows)} workflows")
+    
+    def load_requests(self, requests_path: Path) -> List[Dict]:
         """Load workflow requests"""
-        logger.info(f"Loading requests from {requests_path}")
-
-        with open(requests_path, "r") as f:
-            if requests_path.suffix == ".yaml":
+        with open(requests_path, 'r') as f:
+            if requests_path.suffix == '.yaml':
                 data = yaml.safe_load(f)
             else:
                 data = json.load(f)
-
-        requests = []
-        for req_data in data["requests"]:
-            requests.append(
-                Request(
-                    request_id=req_data["request_id"],
-                    timestamp=datetime.fromisoformat(req_data["timestamp"]),
-                    workflow_id=req_data["workflow_id"],
-                    input_data=req_data["input_data"],
-                    node_configs=req_data.get("node_configs", {}),
-                    node_execution_times=req_data["node_execution_times"],
+            
+        self.workflow_requests = data['requests']
+        self.logger.info(f"Loaded {len(self.workflow_requests)} workflow requests")
+        return self.workflow_requests
+    
+    def parse_workflows(self) -> List[Task]:
+        """Parse all workflow requests into tasks"""
+        all_tasks = []
+        
+        for request in self.workflow_requests:
+            workflow_id = request['workflow_id']
+            request_id = request['request_id']
+            timestamp = datetime.fromisoformat(request['timestamp']).timestamp()
+            node_execution_times = request.get('node_execution_times', {})
+            
+            if workflow_id not in self.workflows:
+                self.logger.warning(f"Unknown workflow: {workflow_id}")
+                continue
+            
+            dag = self.workflows[workflow_id]
+            
+            # Create tasks for each node in the workflow
+            for node_id in dag.topological_order:
+                node = dag.nodes[node_id]
+                
+                # Get estimated execution time
+                if node_id in node_execution_times:
+                    estimated_time = node_execution_times[node_id]
+                else:
+                    # Estimate based on model performance
+                    model = self.models[node.model]
+                    tokens = 1000  # Default token count
+                    tokens_per_second = model.tokens_per_second if model.tokens_per_second else 100
+                    estimated_time = tokens / tokens_per_second
+                
+                task = Task(
+                    workflow_id=workflow_id,
+                    node_id=node_id,
+                    model_type=node.model,
+                    dependencies={f"{request_id}_{dep}" for dep in dag.get_dependencies(node_id)},
+                    ready_time=timestamp,
+                    estimated_time=estimated_time,
+                    request_id=request_id
                 )
-            )
-
-        return requests
-
+                all_tasks.append(task)
+        
+        self.logger.info(f"Parsed {len(all_tasks)} tasks from workflows")
+        return all_tasks
+    
+    def topological_sort_tasks(self, tasks: List[Task]) -> List[Task]:
+        """Sort tasks topologically while respecting dependencies"""
+        # Build dependency graph
+        task_map = {f"{t.request_id}_{t.node_id}": t for t in tasks}
+        in_degree = defaultdict(int)
+        adj_list = defaultdict(list)
+        
+        for task in tasks:
+            task_key = f"{task.request_id}_{task.node_id}"
+            for dep in task.dependencies:
+                if dep in task_map:
+                    adj_list[dep].append(task_key)
+                    in_degree[task_key] += 1
+        
+        # Topological sort
+        queue = deque([key for key in task_map if in_degree[key] == 0])
+        sorted_tasks = []
+        
+        while queue:
+            task_key = queue.popleft()
+            sorted_tasks.append(task_map[task_key])
+            
+            for neighbor in adj_list[task_key]:
+                in_degree[neighbor] -= 1
+                if in_degree[neighbor] == 0:
+                    queue.append(neighbor)
+        
+        return sorted_tasks
+    
+    def greedy_optimize_tasks(self, tasks: List[Task]) -> List[Task]:
+        """Optimize task order to minimize model switches while respecting dependencies"""
+        # Group tasks by model type
+        model_groups = defaultdict(list)
+        for task in tasks:
+            model_groups[task.model_type].append(task)
+        
+        # Build dependency graph
+        task_map = {f"{t.request_id}_{t.node_id}": t for t in tasks}
+        dependencies = defaultdict(set)
+        dependents = defaultdict(set)
+        
+        for task in tasks:
+            task_key = f"{task.request_id}_{task.node_id}"
+            for dep in task.dependencies:
+                if dep in task_map:
+                    dependencies[task_key].add(dep)
+                    dependents[dep].add(task_key)
+        
+        # Greedy scheduling
+        scheduled = []
+        scheduled_set = set()
+        ready_tasks = []
+        
+        # Initialize with tasks that have no dependencies
+        for task in tasks:
+            task_key = f"{task.request_id}_{task.node_id}"
+            if not dependencies[task_key]:
+                heapq.heappush(ready_tasks, (task.model_type, task.ready_time, task))
+        
+        current_model = None
+        
+        while ready_tasks:
+            # Try to pick a task with the same model as current
+            best_task = None
+            best_idx = -1
+            
+            for idx, (model_type, _, task) in enumerate(ready_tasks):
+                if model_type == current_model:
+                    best_task = task
+                    best_idx = idx
+                    break
+            
+            # If no same model found, pick the earliest ready task
+            if best_task is None:
+                _, _, best_task = heapq.heappop(ready_tasks)
+            else:
+                # Remove the selected task from heap
+                ready_tasks.pop(best_idx)
+                heapq.heapify(ready_tasks)
+            
+            # Schedule the task
+            scheduled.append(best_task)
+            scheduled_set.add(f"{best_task.request_id}_{best_task.node_id}")
+            
+            if current_model != best_task.model_type:
+                if current_model is not None:
+                    self.model_switch_count += 1
+                current_model = best_task.model_type
+            
+            # Update ready tasks
+            task_key = f"{best_task.request_id}_{best_task.node_id}"
+            for dependent in dependents[task_key]:
+                # Check if all dependencies are satisfied
+                if all(dep in scheduled_set for dep in dependencies[dependent]):
+                    dep_task = task_map[dependent]
+                    heapq.heappush(ready_tasks, (dep_task.model_type, dep_task.ready_time, dep_task))
+        
+        return scheduled
+    
     def _get_model_switch_time(self, from_model: Optional[str], to_model: str) -> float:
         """Calculate model switch time"""
         if from_model == to_model:
             return 0.0
-
+        
         if not from_model:
             return self.models[to_model].load_time_seconds
-
-        # Calculate switch time: unload old + load new
-        from_size_gb = self.models[from_model].memory_gb
-        to_size_gb = self.models[to_model].memory_gb
-
-        # Transfer time over PCIe
-        transfer_time = (from_size_gb + to_size_gb) / PCIE_BANDWIDTH_GB_S
-        overhead = 2.0  # seconds
-
-        return transfer_time + overhead
-
-    def _create_all_nodes(self, requests: List[Request]) -> None:
-        """Create all node executions from requests"""
-        self.pending_nodes.clear()
-        self.ready_queue.clear()
         
-        for request in requests:
-            workflow = self.workflows[request.workflow_id]
-            dependencies = workflow.get_dependencies()
+        # Unload old + load new
+        return self.models[from_model].memory_gb / 16.0 + self.models[to_model].load_time_seconds
+    
+    def allocate_tasks_to_gpus(self, tasks: List[Task]) -> Dict[int, List[Task]]:
+        """Allocate tasks to GPUs using load balancing"""
+        gpu_tasks = defaultdict(list)
+        gpu_load = {i: 0.0 for i in self.gpus}
+        gpu_current_model = {i: None for i in self.gpus}
+        
+        for task in tasks:
+            model = self.models[task.model_type]
             
-            # Create nodes for this request
-            for node in workflow.nodes:
+            if model.gpus_required > 1:
+                # Multi-GPU model - allocate to consecutive GPUs
+                best_gpu_set = None
+                min_load = float('inf')
+                
+                for start_gpu in range(self.num_gpus - model.gpus_required + 1):
+                    gpu_set = self.gpus[start_gpu:start_gpu + model.gpus_required]
+                    total_load = sum(gpu_load[g] for g in gpu_set)
+                    
+                    # Add switch penalty if models don't match
+                    switch_penalty = sum(
+                        self._get_model_switch_time(gpu_current_model[g], task.model_type)
+                        for g in gpu_set
+                    )
+                    
+                    if total_load + switch_penalty < min_load:
+                        min_load = total_load + switch_penalty
+                        best_gpu_set = gpu_set
+                
+                # Allocate to primary GPU only (task will use multiple GPUs during execution)
+                primary_gpu = best_gpu_set[0]
+                gpu_tasks[primary_gpu].append(task)
+                
+                # Update load for all GPUs in the set
+                for gpu in best_gpu_set:
+                    gpu_load[gpu] += task.estimated_time
+                    if gpu_current_model[gpu] != task.model_type:
+                        gpu_load[gpu] += self._get_model_switch_time(gpu_current_model[gpu], task.model_type)
+                        gpu_current_model[gpu] = task.model_type
+            
+            else:
+                # Single-GPU model - find best GPU
+                best_gpu = min(self.gpus, 
+                             key=lambda g: gpu_load[g] + 
+                             self._get_model_switch_time(gpu_current_model[g], task.model_type))
+                
+                gpu_tasks[best_gpu].append(task)
+                gpu_load[best_gpu] += task.estimated_time
+                if gpu_current_model[best_gpu] != task.model_type:
+                    gpu_load[best_gpu] += self._get_model_switch_time(gpu_current_model[best_gpu], task.model_type)
+                    gpu_current_model[best_gpu] = task.model_type
+        
+        return dict(gpu_tasks)
+    
+    def execute_schedule(self, gpu_allocation: Dict[int, List[Task]]):
+        """Execute the scheduled tasks and create ScheduledTask objects"""
+        for gpu_id, tasks in gpu_allocation.items():
+            current_time = 0.0
+            current_model = None
+            
+            for task in tasks:
+                # Handle model switch
+                switch_time = 0.0
+                if current_model != task.model_type:
+                    switch_time = self._get_model_switch_time(current_model, task.model_type)
+                    current_time += switch_time
+                    self.total_switch_time += switch_time
+                    current_model = task.model_type
+                    self.gpu_states[gpu_id].current_model = current_model
+                
+                # Create NodeExecution
                 node_exec = NodeExecution(
-                    request_id=request.request_id,
-                    workflow_id=request.workflow_id,
-                    node_id=node.id,
-                    model_name=node.model,
-                    estimated_time=request.node_execution_times.get(node.id, 10.0),
-                    dependencies={f"{request.request_id}_{dep}" for dep in dependencies.get(node.id, set())}
+                    request_id=task.request_id,
+                    workflow_id=task.workflow_id,
+                    node_id=task.node_id,
+                    model_name=task.model_type,
+                    status="scheduled",
+                    gpu_id=gpu_id,
+                    start_time=current_time,
+                    end_time=current_time + task.estimated_time,
+                    estimated_time=task.estimated_time
                 )
                 
-                # If node has no dependencies, it's ready
-                if not node_exec.dependencies:
-                    self.ready_queue[node_exec.model_name].append(node_exec)
-                else:
-                    self.pending_nodes.append(node_exec)
-
-    def _update_ready_queue(self):
-        """Move nodes from pending to ready queue when dependencies are satisfied"""
-        newly_ready = []
-        remaining_pending = []
-        
-        for node in self.pending_nodes:
-            if all(dep in self.completed_nodes for dep in node.dependencies):
-                newly_ready.append(node)
-            else:
-                remaining_pending.append(node)
-        
-        self.pending_nodes = remaining_pending
-        
-        # Add newly ready nodes to ready queue
-        for node in newly_ready:
-            self.ready_queue[node.model_name].append(node)
-
-    def _select_next_model(self) -> Optional[str]:
-        """Select next model to process based on ready queue"""
-        if not self.ready_queue:
-            return None
-        
-        # Prefer current model if it has ready nodes
-        if self.current_model and self.current_model in self.ready_queue and self.ready_queue[self.current_model]:
-            return self.current_model
-        
-        # Otherwise, select model with most ready nodes
-        best_model = max(self.ready_queue.keys(), key=lambda m: len(self.ready_queue[m]))
-        return best_model if self.ready_queue[best_model] else None
-
-    def _schedule_batch(self, model_name: str, current_time: float) -> float:
-        """Schedule a batch of nodes with the same model across all GPUs"""
-        nodes = self.ready_queue[model_name]
-        if not nodes:
-            return current_time
-        
-        model_info = self.models[model_name]
-        
-        # Handle model switch
-        switch_time = self._get_model_switch_time(self.current_model, model_name)
-        if switch_time > 0:
-            self.model_switch_count += 1
-            self.total_switch_time += switch_time
-            current_time += switch_time
-            self.current_model = model_name
-            
-            # Update all GPU models
-            for gpu_id in self.gpus:
-                self.gpu_states[gpu_id].current_model = model_name
-        
-        # Schedule nodes in batch
-        batch_end_time = current_time
-        
-        if model_info.gpus_required > 1:
-            # Multi-GPU model: process sequentially
-            num_gpus = len(self.gpus)
-            gpus_per_task = model_info.gpus_required
-            concurrent_tasks = num_gpus // gpus_per_task
-            
-            task_idx = 0
-            while task_idx < len(nodes) and nodes:
-                batch_start = current_time
-                
-                # Schedule up to concurrent_tasks in parallel
-                for i in range(concurrent_tasks):
-                    if task_idx >= len(nodes):
-                        break
-                    
-                    node = nodes[task_idx]
-                    gpu_start_idx = i * gpus_per_task
-                    
-                    # Schedule node
-                    node.status = "scheduled"
-                    node.gpu_id = self.gpus[gpu_start_idx]  # Primary GPU
-                    node.start_time = batch_start
-                    node.end_time = batch_start + node.estimated_time
-                    
-                    # Update GPU states for all required GPUs
-                    for j in range(gpus_per_task):
-                        gpu_id = self.gpus[gpu_start_idx + j]
-                        self.gpu_states[gpu_id].total_busy_time += node.estimated_time
-                        self.gpu_states[gpu_id].execution_count += 1
-                    
-                    # Create scheduled task
-                    task = ScheduledTask(
-                        node=node,
-                        gpu_id=node.gpu_id,
-                        start_time=node.start_time,
-                        end_time=node.end_time,
-                        switch_time=switch_time if task_idx == 0 else 0.0
-                    )
-                    self.scheduled_tasks.append(task)
-                    
-                    task_idx += 1
-                
-                # Update current time to when this sub-batch finishes
-                if task_idx > 0:
-                    current_time = batch_start + nodes[task_idx-1].estimated_time
-                    batch_end_time = current_time
-        
-        else:
-            # Single GPU model: true parallel execution
-            # All GPUs execute different nodes in parallel
-            gpu_idx = 0
-            batch_nodes = []
-            
-            while nodes and gpu_idx < len(self.gpus):
-                node = nodes.pop(0)
-                gpu_id = self.gpus[gpu_idx]
-                
-                # Schedule node
-                node.status = "scheduled"
-                node.gpu_id = gpu_id
-                node.start_time = current_time
-                node.end_time = current_time + node.estimated_time
+                # Create ScheduledTask
+                scheduled_task = ScheduledTask(
+                    node=node_exec,
+                    gpu_id=gpu_id,
+                    start_time=current_time,
+                    end_time=current_time + task.estimated_time,
+                    switch_time=switch_time
+                )
+                self.scheduled_tasks.append(scheduled_task)
                 
                 # Update GPU state
-                self.gpu_states[gpu_id].total_busy_time += node.estimated_time
+                self.gpu_states[gpu_id].total_busy_time += task.estimated_time
                 self.gpu_states[gpu_id].execution_count += 1
                 
-                # Create scheduled task
-                task = ScheduledTask(
-                    node=node,
-                    gpu_id=node.gpu_id,
-                    start_time=node.start_time,
-                    end_time=node.end_time,
-                    switch_time=switch_time if gpu_idx == 0 else 0.0
-                )
-                self.scheduled_tasks.append(task)
-                
-                batch_nodes.append(node)
-                gpu_idx += 1
-                
-                # Mark as completed
-                node.status = "completed"
-                self.completed_nodes.add(node.node_key)
-            
-            # If we have more nodes than GPUs, continue in batches
-            if nodes:
-                # Find max execution time in this batch
-                if batch_nodes:
-                    batch_end_time = max(n.end_time for n in batch_nodes)
-                    return self._schedule_batch(model_name, batch_end_time)
-            else:
-                # All done with this model
-                if batch_nodes:
-                    batch_end_time = max(n.end_time for n in batch_nodes)
-        
-        # Mark all scheduled nodes as completed
-        for task in self.scheduled_tasks:
-            if task.node.status == "scheduled":
-                task.node.status = "completed"
-                self.completed_nodes.add(task.node.node_key)
-        
-        # Clear processed nodes from ready queue
-        self.ready_queue[model_name] = nodes
-        
-        return batch_end_time
-
-    def run(self, requests: List[Request]):
-        """Run the scheduler on requests"""
-        logger.info(f"Starting offline scheduler with {len(requests)} requests")
-        logger.info(f"Available GPUs: {self.gpus}")
-        
-        # Step 1: Create all nodes
-        self._create_all_nodes(requests)
-        
-        total_nodes = sum(len(nodes) for nodes in self.ready_queue.values()) + len(self.pending_nodes)
-        logger.info(f"Created {total_nodes} total nodes to schedule")
-        
-        # Step 2: Process nodes in batches
-        current_time = 0.0
-        
-        while self.ready_queue or self.pending_nodes:
-            # Update ready queue with newly ready nodes
-            self._update_ready_queue()
-            
-            # Select next model to process
-            next_model = self._select_next_model()
-            
-            if not next_model:
-                if self.pending_nodes:
-                    logger.error("Deadlock detected: nodes pending but none ready")
-                    break
-                else:
-                    break
-            
-            # Schedule batch of same model
-            logger.info(f"Scheduling batch of model {next_model} with {len(self.ready_queue[next_model])} nodes")
-            current_time = self._schedule_batch(next_model, current_time)
-        
-        # Print final metrics
-        self._print_metrics()
-
-    def _print_metrics(self):
-        """Print execution metrics"""
-        logger.info("\n" + "=" * 60)
-        logger.info("SCHEDULING METRICS")
-        logger.info("=" * 60)
-        
+                # Update current time
+                current_time += task.estimated_time
+    
+    def calculate_metrics(self) -> Dict:
+        """Calculate performance metrics"""
         if not self.scheduled_tasks:
-            logger.warning("No tasks scheduled")
+            return {}
+        
+        makespan = max(task.end_time for task in self.scheduled_tasks)
+        
+        metrics = {
+            'total_tasks': len(self.scheduled_tasks),
+            'total_model_switches': self.model_switch_count,
+            'total_switch_time': self.total_switch_time,
+            'estimated_makespan': makespan,
+            'average_throughput': len(self.scheduled_tasks) / makespan if makespan > 0 else 0,
+            'switch_overhead': self.total_switch_time / makespan * 100 if makespan > 0 else 0,
+            'gpu_utilization': {},
+            'gpu_execution_count': {}
+        }
+        
+        for gpu_id, gpu_state in enumerate(self.gpu_states):
+            metrics['gpu_utilization'][gpu_id] = (gpu_state.total_busy_time / makespan * 100) if makespan > 0 else 0
+            metrics['gpu_execution_count'][gpu_id] = gpu_state.execution_count
+        
+        return metrics
+    
+    def run(self, requests: List[Dict]):
+        """Execute the offline batch processing"""
+        self.logger.info("Starting optimized offline batch processing")
+        self.logger.info(f"Available GPUs: {self.gpus}")
+        
+        # Step 1: Parse workflows into tasks
+        all_tasks = self.parse_workflows()
+        
+        # Step 2: Topological sort
+        sorted_tasks = self.topological_sort_tasks(all_tasks)
+        self.logger.info(f"Topologically sorted {len(sorted_tasks)} tasks")
+        
+        # Step 3: Greedy optimization
+        optimized_tasks = self.greedy_optimize_tasks(sorted_tasks)
+        self.logger.info(f"Optimized task order to minimize model switches")
+        
+        # Step 4: Allocate to GPUs
+        gpu_allocation = self.allocate_tasks_to_gpus(optimized_tasks)
+        
+        # Step 5: Execute schedule
+        self.execute_schedule(gpu_allocation)
+        
+        # Step 6: Calculate metrics
+        metrics = self.calculate_metrics()
+        
+        # Print results
+        self._print_metrics(metrics)
+        
+        # Save execution log
+        self._save_execution_log(metrics)
+        
+        return metrics
+    
+    def _print_metrics(self, metrics: Dict):
+        """Print execution metrics"""
+        self.logger.info("\n" + "=" * 60)
+        self.logger.info("SCHEDULING METRICS")
+        self.logger.info("=" * 60)
+        
+        if not metrics:
+            self.logger.warning("No tasks scheduled")
             return
         
-        # Calculate makespan
-        makespan = max(task.end_time for task in self.scheduled_tasks)
-        total_tasks = len(self.scheduled_tasks)
+        self.logger.info(f"Total execution time: {metrics['estimated_makespan']:.2f} seconds")
+        self.logger.info(f"Total tasks: {metrics['total_tasks']}")
+        self.logger.info(f"Average throughput: {metrics['average_throughput']:.2f} tasks/second")
         
-        logger.info(f"Total execution time: {makespan:.2f} seconds")
-        logger.info(f"Total tasks: {total_tasks}")
-        logger.info(f"Average throughput: {total_tasks / makespan:.2f} tasks/second")
+        self.logger.info(f"\nModel switching:")
+        self.logger.info(f"  Total switches: {metrics['total_model_switches']}")
+        self.logger.info(f"  Total switch time: {metrics['total_switch_time']:.2f} seconds")
+        self.logger.info(f"  Switch overhead: {metrics['switch_overhead']:.1f}%")
         
-        # Model switching
-        logger.info(f"\nModel switching:")
-        logger.info(f"  Total switches: {self.model_switch_count}")
-        logger.info(f"  Total switch time: {self.total_switch_time:.2f} seconds")
-        logger.info(f"  Switch overhead: {self.total_switch_time / makespan * 100:.1f}%")
-        
-        # GPU utilization and execution counts
-        logger.info(f"\nGPU utilization:")
-        for gpu_id, gpu_state in sorted(self.gpu_states.items()):
-            utilization = gpu_state.total_busy_time / makespan * 100 if makespan > 0 else 0
-            logger.info(f"  GPU {gpu_id}: {utilization:.1f}% utilization, {gpu_state.execution_count} executions")
-        
-        # Model statistics
-        model_stats = defaultdict(lambda: {"count": 0, "time": 0})
-        for task in self.scheduled_tasks:
-            model_name = task.node.model_name
-            model_stats[model_name]["count"] += 1
-            model_stats[model_name]["time"] += task.node.estimated_time
-        
-        logger.info(f"\nModel statistics:")
-        for model, stats in sorted(model_stats.items()):
-            logger.info(f"  {model}: {stats['count']} tasks, {stats['time']:.2f}s total time")
-        
-        # Write detailed log
-        self._write_detailed_log()
-
-    def _write_detailed_log(self):
-        """Write detailed execution log"""
-        log_file = Path("offline_execution_log.json")
-        
+        self.logger.info(f"\nGPU utilization:")
+        for gpu_id in self.gpus:
+            utilization = metrics['gpu_utilization'].get(gpu_id, 0)
+            exec_count = metrics['gpu_execution_count'].get(gpu_id, 0)
+            self.logger.info(f"  GPU {gpu_id}: {utilization:.1f}% utilization, {exec_count} executions")
+    
+    def _save_execution_log(self, metrics: Dict):
+        """Save detailed execution log"""
         # Calculate request-level metrics
         request_times = {}
         for task in self.scheduled_tasks:
@@ -557,9 +538,9 @@ class OfflineScheduler:
                 "mode": self.mode,
                 "simulate": self.simulate,
                 "gpus": self.gpus,
-                "makespan": max(t.end_time for t in self.scheduled_tasks) if self.scheduled_tasks else 0,
-                "total_model_switches": self.model_switch_count,
-                "total_switch_time": self.total_switch_time,
+                "makespan": metrics.get('estimated_makespan', 0),
+                "total_model_switches": metrics.get('total_model_switches', 0),
+                "total_switch_time": metrics.get('total_switch_time', 0),
             },
             "executions": []
         }
@@ -577,53 +558,33 @@ class OfflineScheduler:
                 "estimated_time": task.node.estimated_time,
             })
         
-        with open(log_file, "w") as f:
+        with open("offline_execution_log.json", "w") as f:
             json.dump(log_data, f, indent=2)
         
-        logger.info(f"\nDetailed log written to {log_file}")
+        self.logger.info(f"\nDetailed log written to offline_execution_log.json")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Offline scheduler for GSwarm workflows")
-    parser.add_argument(
-        "--gpus",
-        type=int,
-        required=True,
-        help="Number of available GPUs",
-    )
-    parser.add_argument(
-        "--simulate",
-        type=lambda x: x.lower() == "true",
-        default=False,
-        help="Use simulation mode (true/false)",
-    )
-    parser.add_argument(
-        "--config", 
-        type=Path, 
-        default=Path("system_config.yaml"), 
-        help="Path to system configuration file"
-    )
-    parser.add_argument(
-        "--requests", 
-        type=Path, 
-        default=Path("workflow_requests.yaml"), 
-        help="Path to workflow requests file"
-    )
-
+    parser = argparse.ArgumentParser(description="Optimized Offline Batch Processing Scheduler")
+    parser.add_argument("--gpus", type=int, required=True, help="Number of available GPUs")
+    parser.add_argument("--simulate", type=lambda x: x.lower() == "true", default=False, help="Use simulation mode (true/false)")
+    parser.add_argument("--config", type=Path, default=Path("system_config.yaml"), help="Path to system configuration file")
+    parser.add_argument("--requests", type=Path, default=Path("workflow_requests.yaml"), help="Path to workflow requests file")
+    
     args = parser.parse_args()
-
+    
     # Generate GPU list
     gpu_list = list(range(args.gpus))
-
+    
     # Create scheduler
-    scheduler = OfflineScheduler(gpus=gpu_list, simulate=args.simulate)
-
+    scheduler = OptimizedOfflineScheduler(gpus=gpu_list, simulate=args.simulate)
+    
     # Load configuration
     scheduler.load_config(args.config)
-
+    
     # Load requests
     requests = scheduler.load_requests(args.requests)
-
+    
     # Run scheduler
     scheduler.run(requests)
 
