@@ -1,0 +1,119 @@
+{
+  "models": {
+    "llama2_7b_base": {
+      "name": "Llama2-7B-Base",
+      "type": "llm",
+      "memory_gb": 14,
+      "gpus_required": 1,
+      "load_time_seconds": 10,
+      "tokens_per_second": 50,
+      "token_mean": 512,
+      "token_std": 128
+    },
+    "llama2_7b_chat": {
+      "name": "Llama2-7B-Chat",
+      "base_model": "llama2_7b_base",
+      "tokens_per_second": 45,
+      "token_mean": 480,
+      "token_std": 120
+    },
+    "llama2_7b_custom": {
+      "name": "Llama2-7B-Custom-Finetune",
+      "base_model": "llama2_7b_base",
+      "tokens_per_second": 48,
+      "token_mean": 520,
+      "token_std": 140
+    },
+    "llama2_30b_base": {
+      "name": "Llama2-30B-Base",
+      "type": "llm",
+      "memory_gb": 60,
+      "gpus_required": 4,
+      "load_time_seconds": 40,
+      "tokens_per_second": 20,
+      "token_mean": 1024,
+      "token_std": 256
+    },
+    "llama2_30b_instruct": {
+      "name": "Llama2-30B-Instruct",
+      "base_model": "llama2_30b_base",
+      "tokens_per_second": 18,
+      "token_mean": 1100,
+      "token_std": 280
+    },
+    "stable_diffusion_v1_5": {
+      "name": "Stable-Diffusion-v1.5",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 6,
+      "inference_time_mean": 2.0,
+      "inference_time_std": 0.5,
+      "config": {
+        "width": [512, 768, 1024],
+        "height": [512, 768, 1024],
+        "steps": [20, 30, 50]
+      }
+    }
+  },
+  "workflows": {
+    "simple_llm_to_image": {
+      "name": "Simple LLM to Image Generation",
+      "description": "Generate image prompt with 7B model then create image",
+      "nodes": [
+        {
+          "id": "prompt_generation",
+          "model": "llama2_7b_chat",
+          "inputs": ["user_prompt"],
+          "outputs": ["image_prompt"]
+        },
+        {
+          "id": "image_generation",
+          "model": "stable_diffusion_v1_5",
+          "inputs": ["image_prompt"],
+          "outputs": ["generated_image"],
+          "config_options": ["width", "height", "steps"]
+        }
+      ],
+      "edges": [
+        {"from": "prompt_generation", "to": "image_generation"}
+      ]
+    },
+    "llm_analysis_pipeline": {
+      "name": "LLM Analysis Pipeline with Fork-Merge",
+      "description": "Multi-stage analysis with parallel processing and final synthesis",
+      "nodes": [
+        {
+          "id": "initial_analysis",
+          "model": "llama2_7b_chat",
+          "inputs": ["user_prompt"],
+          "outputs": ["initial_analysis"]
+        },
+        {
+          "id": "deep_analysis_1",
+          "model": "llama2_30b_instruct",
+          "inputs": ["initial_analysis"],
+          "outputs": ["deep_analysis_1"]
+        },
+        {
+          "id": "deep_analysis_2",
+          "model": "llama2_30b_instruct",
+          "inputs": ["initial_analysis"],
+          "outputs": ["deep_analysis_2"]
+        },
+        {
+          "id": "final_synthesis",
+          "model": "llama2_7b_custom",
+          "inputs": ["deep_analysis_1", "deep_analysis_2"],
+          "outputs": ["final_summary"]
+        }
+      ],
+      "edges": [
+        {"from": "initial_analysis", "to": "deep_analysis_1"},
+        {"from": "initial_analysis", "to": "deep_analysis_2"},
+        {"from": "deep_analysis_1", "to": "final_synthesis"},
+        {"from": "deep_analysis_2", "to": "final_synthesis"}
+      ]
+    }
+  }
+} 

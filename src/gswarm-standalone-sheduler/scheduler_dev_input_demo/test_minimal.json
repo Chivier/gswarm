@@ -1,0 +1,71 @@
+{
+  "models": {
+    "tiny_llm": {
+      "name": "Tiny-LLM-1B",
+      "type": "llm",
+      "memory_gb": 4,
+      "gpus_required": 1,
+      "load_time_seconds": 2,
+      "tokens_per_second": 80,
+      "token_mean": 256,
+      "token_std": 64
+    },
+    "fast_llm": {
+      "name": "Fast-LLM-3B",
+      "base_model": "tiny_llm",
+      "memory_gb": 8,
+      "tokens_per_second": 60,
+      "token_mean": 384,
+      "token_std": 96
+    },
+    "simple_diffusion": {
+      "name": "Simple-Diffusion",
+      "type": "image_generation",
+      "memory_gb": 4,
+      "gpus_required": 1,
+      "load_time_seconds": 3,
+      "inference_time_mean": 1.0,
+      "inference_time_std": 0.2,
+      "config": {
+        "size": ["small", "medium"]
+      }
+    }
+  },
+  "workflows": {
+    "simple_chat": {
+      "name": "Simple Chat",
+      "description": "Single LLM chat workflow",
+      "nodes": [
+        {
+          "id": "chat_response",
+          "model": "tiny_llm",
+          "inputs": ["user_message"],
+          "outputs": ["bot_response"]
+        }
+      ],
+      "edges": []
+    },
+    "text_to_image": {
+      "name": "Text to Image",
+      "description": "Simple text to image generation",
+      "nodes": [
+        {
+          "id": "prompt_improvement",
+          "model": "fast_llm",
+          "inputs": ["user_prompt"],
+          "outputs": ["improved_prompt"]
+        },
+        {
+          "id": "image_gen",
+          "model": "simple_diffusion",
+          "inputs": ["improved_prompt"],
+          "outputs": ["image"],
+          "config_options": ["size"]
+        }
+      ],
+      "edges": [
+        {"from": "prompt_improvement", "to": "image_gen"}
+      ]
+    }
+  }
+} 
