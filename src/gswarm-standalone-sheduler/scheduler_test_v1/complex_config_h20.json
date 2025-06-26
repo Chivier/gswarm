@@ -1,0 +1,435 @@
+{
+  "models": {
+    "llama2_7b_base": {
+      "name": "Llama2-7B-Base",
+      "type": "llm",
+      "memory_gb": 14,
+      "gpus_required": 1,
+      "load_time_seconds": 10,
+      "tokens_per_second": 50,
+      "token_mean": 512,
+      "token_std": 128
+    },
+    "llama2_13b_base": {
+      "name": "Llama2-13B-Base",
+      "type": "llm",
+      "memory_gb": 26,
+      "gpus_required": 1,
+      "load_time_seconds": 20,
+      "tokens_per_second": 35,
+      "token_mean": 768,
+      "token_std": 180
+    },
+    "llama2_70b_base": {
+      "name": "Llama2-70B-Base",
+      "type": "llm",
+      "memory_gb": 140,
+      "gpus_required": 2,
+      "load_time_seconds": 80,
+      "tokens_per_second": 12,
+      "token_mean": 1536,
+      "token_std": 384
+    },
+    "code_llama_7b": {
+      "name": "CodeLlama-7B-Instruct",
+      "base_model": "llama2_7b_base",
+      "tokens_per_second": 45,
+      "token_mean": 600,
+      "token_std": 150,
+      "type": "llm",
+      "memory_gb": 14,
+      "gpus_required": 1,
+      "load_time_seconds": 10
+    },
+    "code_llama_13b": {
+      "name": "CodeLlama-13B-Instruct",
+      "base_model": "llama2_13b_base",
+      "tokens_per_second": 30,
+      "token_mean": 800,
+      "token_std": 200,
+      "type": "llm",
+      "memory_gb": 26,
+      "gpus_required": 1,
+      "load_time_seconds": 20
+    },
+    "mixtral_8x7b": {
+      "name": "Mixtral-8x7B-Instruct",
+      "type": "llm",
+      "memory_gb": 45,
+      "gpus_required": 1,
+      "load_time_seconds": 25,
+      "tokens_per_second": 40,
+      "token_mean": 900,
+      "token_std": 220
+    },
+    "clip_vit_large": {
+      "name": "CLIP-ViT-Large",
+      "type": "embedding",
+      "memory_gb": 4,
+      "gpus_required": 1,
+      "load_time_seconds": 3,
+      "inference_time_mean": 0.2,
+      "inference_time_std": 0.05
+    },
+    "stable_diffusion_xl": {
+      "name": "Stable-Diffusion-XL",
+      "type": "image_generation",
+      "memory_gb": 12,
+      "gpus_required": 1,
+      "load_time_seconds": 8,
+      "inference_time_mean": 4.0,
+      "inference_time_std": 1.0,
+      "config": {
+        "width": [
+          1024,
+          1152,
+          1216
+        ],
+        "height": [
+          1024,
+          1152,
+          1216
+        ],
+        "steps": [
+          20,
+          30,
+          50
+        ],
+        "guidance_scale": [
+          7.0,
+          7.5,
+          8.0
+        ]
+      }
+    },
+    "stable_diffusion_v1_5": {
+      "name": "Stable-Diffusion-v1.5",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 6,
+      "inference_time_mean": 2.0,
+      "inference_time_std": 0.5,
+      "config": {
+        "width": [
+          512,
+          768
+        ],
+        "height": [
+          512,
+          768
+        ],
+        "steps": [
+          20,
+          30
+        ]
+      }
+    },
+    "whisper_large": {
+      "name": "Whisper-Large-v3",
+      "type": "audio_transcription",
+      "memory_gb": 6,
+      "gpus_required": 1,
+      "load_time_seconds": 4,
+      "inference_time_mean": 1.5,
+      "inference_time_std": 0.3
+    }
+  },
+  "workflows": {
+    "multimodal_content_creation": {
+      "name": "Multimodal Content Creation Pipeline",
+      "description": "Audio transcription -> text analysis -> image generation pipeline",
+      "nodes": [
+        {
+          "id": "audio_transcription",
+          "model": "whisper_large",
+          "inputs": [
+            "audio_file"
+          ],
+          "outputs": [
+            "transcribed_text"
+          ]
+        },
+        {
+          "id": "content_analysis",
+          "model": "llama2_13b_base",
+          "inputs": [
+            "transcribed_text"
+          ],
+          "outputs": [
+            "content_summary",
+            "image_concepts"
+          ]
+        },
+        {
+          "id": "image_prompt_generation",
+          "model": "code_llama_7b",
+          "inputs": [
+            "image_concepts"
+          ],
+          "outputs": [
+            "detailed_image_prompt"
+          ]
+        },
+        {
+          "id": "high_quality_image",
+          "model": "stable_diffusion_xl",
+          "inputs": [
+            "detailed_image_prompt"
+          ],
+          "outputs": [
+            "hq_image"
+          ],
+          "config_options": [
+            "width",
+            "height",
+            "steps",
+            "guidance_scale"
+          ]
+        },
+        {
+          "id": "fallback_image",
+          "model": "stable_diffusion_v1_5",
+          "inputs": [
+            "detailed_image_prompt"
+          ],
+          "outputs": [
+            "fallback_image"
+          ],
+          "config_options": [
+            "width",
+            "height",
+            "steps"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": "audio_transcription",
+          "to": "content_analysis"
+        },
+        {
+          "from": "content_analysis",
+          "to": "image_prompt_generation"
+        },
+        {
+          "from": "image_prompt_generation",
+          "to": "high_quality_image"
+        },
+        {
+          "from": "image_prompt_generation",
+          "to": "fallback_image"
+        }
+      ]
+    },
+    "advanced_code_analysis": {
+      "name": "Advanced Code Analysis and Documentation",
+      "description": "Multi-stage code analysis with specialized models",
+      "nodes": [
+        {
+          "id": "initial_code_scan",
+          "model": "code_llama_7b",
+          "inputs": [
+            "source_code"
+          ],
+          "outputs": [
+            "code_structure",
+            "complexity_metrics"
+          ]
+        },
+        {
+          "id": "detailed_analysis",
+          "model": "code_llama_13b",
+          "inputs": [
+            "code_structure"
+          ],
+          "outputs": [
+            "detailed_analysis"
+          ]
+        },
+        {
+          "id": "security_review",
+          "model": "mixtral_8x7b",
+          "inputs": [
+            "source_code",
+            "detailed_analysis"
+          ],
+          "outputs": [
+            "security_report"
+          ]
+        },
+        {
+          "id": "performance_analysis",
+          "model": "mixtral_8x7b",
+          "inputs": [
+            "complexity_metrics",
+            "detailed_analysis"
+          ],
+          "outputs": [
+            "performance_report"
+          ]
+        },
+        {
+          "id": "comprehensive_review",
+          "model": "llama2_70b_base",
+          "inputs": [
+            "security_report",
+            "performance_report",
+            "detailed_analysis"
+          ],
+          "outputs": [
+            "final_documentation"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": "initial_code_scan",
+          "to": "detailed_analysis"
+        },
+        {
+          "from": "initial_code_scan",
+          "to": "performance_analysis"
+        },
+        {
+          "from": "detailed_analysis",
+          "to": "security_review"
+        },
+        {
+          "from": "detailed_analysis",
+          "to": "performance_analysis"
+        },
+        {
+          "from": "security_review",
+          "to": "comprehensive_review"
+        },
+        {
+          "from": "performance_report",
+          "to": "comprehensive_review"
+        },
+        {
+          "from": "detailed_analysis",
+          "to": "comprehensive_review"
+        }
+      ]
+    },
+    "research_synthesis_pipeline": {
+      "name": "Research Synthesis with Multiple Expert Models",
+      "description": "Complex research workflow with multiple parallel analysis paths",
+      "nodes": [
+        {
+          "id": "research_query_analysis",
+          "model": "llama2_13b_base",
+          "inputs": [
+            "research_query"
+          ],
+          "outputs": [
+            "analysis_plan",
+            "key_concepts"
+          ]
+        },
+        {
+          "id": "technical_analysis",
+          "model": "code_llama_13b",
+          "inputs": [
+            "analysis_plan"
+          ],
+          "outputs": [
+            "technical_insights"
+          ]
+        },
+        {
+          "id": "domain_analysis_1",
+          "model": "mixtral_8x7b",
+          "inputs": [
+            "key_concepts"
+          ],
+          "outputs": [
+            "domain_insights_1"
+          ]
+        },
+        {
+          "id": "domain_analysis_2",
+          "model": "mixtral_8x7b",
+          "inputs": [
+            "key_concepts"
+          ],
+          "outputs": [
+            "domain_insights_2"
+          ]
+        },
+        {
+          "id": "semantic_embedding",
+          "model": "clip_vit_large",
+          "inputs": [
+            "key_concepts"
+          ],
+          "outputs": [
+            "concept_embeddings"
+          ]
+        },
+        {
+          "id": "synthesis_preparation",
+          "model": "llama2_13b_base",
+          "inputs": [
+            "technical_insights",
+            "domain_insights_1",
+            "domain_insights_2"
+          ],
+          "outputs": [
+            "prepared_synthesis"
+          ]
+        },
+        {
+          "id": "final_synthesis",
+          "model": "llama2_70b_base",
+          "inputs": [
+            "prepared_synthesis",
+            "concept_embeddings"
+          ],
+          "outputs": [
+            "comprehensive_research_report"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": "research_query_analysis",
+          "to": "technical_analysis"
+        },
+        {
+          "from": "research_query_analysis",
+          "to": "domain_analysis_1"
+        },
+        {
+          "from": "research_query_analysis",
+          "to": "domain_analysis_2"
+        },
+        {
+          "from": "research_query_analysis",
+          "to": "semantic_embedding"
+        },
+        {
+          "from": "technical_analysis",
+          "to": "synthesis_preparation"
+        },
+        {
+          "from": "domain_analysis_1",
+          "to": "synthesis_preparation"
+        },
+        {
+          "from": "domain_analysis_2",
+          "to": "synthesis_preparation"
+        },
+        {
+          "from": "synthesis_preparation",
+          "to": "final_synthesis"
+        },
+        {
+          "from": "semantic_embedding",
+          "to": "final_synthesis"
+        }
+      ]
+    }
+  }
+}
