@@ -1,0 +1,94 @@
+{
+  "models": {
+    "llm7b": {
+      "name": "LLM-7B",
+      "memory_gb": 14,
+      "gpus_required": 1,
+      "load_time_seconds": 10,
+      "tokens_per_second": 50,
+      "token_mean": 512,
+      "token_std": 128
+    },
+    "llm13b": {
+      "name": "LLM-13B",
+      "memory_gb": 26,
+      "gpus_required": 1,
+      "load_time_seconds": 20,
+      "tokens_per_second": 35,
+      "token_mean": 768,
+      "token_std": 192
+    },
+    "stable_diffusion": {
+      "name": "Stable-Diffusion",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 6,
+      "inference_time_mean": 2.0,
+      "inference_time_std": 0.5
+    },
+    "whisper": {
+      "name": "Whisper",
+      "memory_gb": 6,
+      "gpus_required": 1,
+      "load_time_seconds": 5,
+      "inference_time_mean": 1.5,
+      "inference_time_std": 0.3
+    }
+  },
+  "workflows": {
+    "workflow1": {
+      "name": "Text Processing Pipeline",
+      "nodes": [
+        {
+          "id": "node1",
+          "model": "llm7b",
+          "inputs": ["user_prompt"],
+          "outputs": ["text_output"]
+        },
+        {
+          "id": "node2",
+          "model": "llm13b",
+          "inputs": ["text_output"],
+          "outputs": ["enhanced_text"]
+        },
+        {
+          "id": "node3",
+          "model": "stable_diffusion",
+          "inputs": ["enhanced_text"],
+          "outputs": ["image"]
+        }
+      ],
+      "edges": [
+        {"from": "node1", "to": "node2"},
+        {"from": "node2", "to": "node3"}
+      ]
+    },
+    "workflow2": {
+      "name": "Audio to Image Pipeline",
+      "nodes": [
+        {
+          "id": "node1",
+          "model": "whisper",
+          "inputs": ["audio_input"],
+          "outputs": ["transcript"]
+        },
+        {
+          "id": "node2",
+          "model": "llm7b",
+          "inputs": ["transcript"],
+          "outputs": ["description"]
+        },
+        {
+          "id": "node3",
+          "model": "stable_diffusion",
+          "inputs": ["description"],
+          "outputs": ["image"]
+        }
+      ],
+      "edges": [
+        {"from": "node1", "to": "node2"},
+        {"from": "node2", "to": "node3"}
+      ]
+    }
+  }
+}
