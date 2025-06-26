@@ -15,14 +15,22 @@
       "base_model": "llama2_7b_base",
       "tokens_per_second": 45,
       "token_mean": 480,
-      "token_std": 120
+      "token_std": 120,
+      "type": "llm",
+      "memory_gb": 14,
+      "gpus_required": 1,
+      "load_time_seconds": 10
     },
     "llama2_7b_custom": {
       "name": "Llama2-7B-Custom-Finetune",
       "base_model": "llama2_7b_base",
       "tokens_per_second": 48,
       "token_mean": 520,
-      "token_std": 140
+      "token_std": 140,
+      "type": "llm",
+      "memory_gb": 14,
+      "gpus_required": 1,
+      "load_time_seconds": 10
     },
     "llama2_30b_base": {
       "name": "Llama2-30B-Base",
@@ -39,7 +47,11 @@
       "base_model": "llama2_30b_base",
       "tokens_per_second": 18,
       "token_mean": 1100,
-      "token_std": 280
+      "token_std": 280,
+      "type": "llm",
+      "memory_gb": 60,
+      "gpus_required": 4,
+      "load_time_seconds": 40
     },
     "stable_diffusion_v1_5": {
       "name": "Stable-Diffusion-v1.5",
@@ -50,9 +62,21 @@
       "inference_time_mean": 2.0,
       "inference_time_std": 0.5,
       "config": {
-        "width": [512, 768, 1024],
-        "height": [512, 768, 1024],
-        "steps": [20, 30, 50]
+        "width": [
+          512,
+          768,
+          1024
+        ],
+        "height": [
+          512,
+          768,
+          1024
+        ],
+        "steps": [
+          20,
+          30,
+          50
+        ]
       }
     }
   },
@@ -64,19 +88,34 @@
         {
           "id": "prompt_generation",
           "model": "llama2_7b_chat",
-          "inputs": ["user_prompt"],
-          "outputs": ["image_prompt"]
+          "inputs": [
+            "user_prompt"
+          ],
+          "outputs": [
+            "image_prompt"
+          ]
         },
         {
           "id": "image_generation",
           "model": "stable_diffusion_v1_5",
-          "inputs": ["image_prompt"],
-          "outputs": ["generated_image"],
-          "config_options": ["width", "height", "steps"]
+          "inputs": [
+            "image_prompt"
+          ],
+          "outputs": [
+            "generated_image"
+          ],
+          "config_options": [
+            "width",
+            "height",
+            "steps"
+          ]
         }
       ],
       "edges": [
-        {"from": "prompt_generation", "to": "image_generation"}
+        {
+          "from": "prompt_generation",
+          "to": "image_generation"
+        }
       ]
     },
     "llm_analysis_pipeline": {
@@ -86,34 +125,63 @@
         {
           "id": "initial_analysis",
           "model": "llama2_7b_chat",
-          "inputs": ["user_prompt"],
-          "outputs": ["initial_analysis"]
+          "inputs": [
+            "user_prompt"
+          ],
+          "outputs": [
+            "initial_analysis"
+          ]
         },
         {
           "id": "deep_analysis_1",
           "model": "llama2_30b_instruct",
-          "inputs": ["initial_analysis"],
-          "outputs": ["deep_analysis_1"]
+          "inputs": [
+            "initial_analysis"
+          ],
+          "outputs": [
+            "deep_analysis_1"
+          ]
         },
         {
           "id": "deep_analysis_2",
           "model": "llama2_30b_instruct",
-          "inputs": ["initial_analysis"],
-          "outputs": ["deep_analysis_2"]
+          "inputs": [
+            "initial_analysis"
+          ],
+          "outputs": [
+            "deep_analysis_2"
+          ]
         },
         {
           "id": "final_synthesis",
           "model": "llama2_7b_custom",
-          "inputs": ["deep_analysis_1", "deep_analysis_2"],
-          "outputs": ["final_summary"]
+          "inputs": [
+            "deep_analysis_1",
+            "deep_analysis_2"
+          ],
+          "outputs": [
+            "final_summary"
+          ]
         }
       ],
       "edges": [
-        {"from": "initial_analysis", "to": "deep_analysis_1"},
-        {"from": "initial_analysis", "to": "deep_analysis_2"},
-        {"from": "deep_analysis_1", "to": "final_synthesis"},
-        {"from": "deep_analysis_2", "to": "final_synthesis"}
+        {
+          "from": "initial_analysis",
+          "to": "deep_analysis_1"
+        },
+        {
+          "from": "initial_analysis",
+          "to": "deep_analysis_2"
+        },
+        {
+          "from": "deep_analysis_1",
+          "to": "final_synthesis"
+        },
+        {
+          "from": "deep_analysis_2",
+          "to": "final_synthesis"
+        }
       ]
     }
   }
-} 
+}

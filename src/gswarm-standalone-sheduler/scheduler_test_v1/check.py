@@ -55,14 +55,32 @@ class GPUExecutionChecker:
 
     def group_executions_by_gpu(self):
         """Group executions by GPU ID and sort by start time."""
+        seen_executions = set()  # 用于跟踪已见过的执行记录
+        duplicate_count = 0
+        
         for execution in self.data["executions"]:
             # Validate required fields
             required_fields = ["gpu_id", "start_time", "end_time", "request_id"]
             for field in required_fields:
                 if field not in execution:
-                    print(f"✗ Warning: Execution missing field '{field}': {execution}")
+                    # print(f"✗ Warning: Execution missing field '{field}': {execution}")
                     continue
 
+            # 创建一个唯一标识符来检测重复
+            execution_key = (
+                execution["gpu_id"],
+                execution["request_id"],
+                execution["start_time"],
+                execution["end_time"]
+            )
+            
+            # 检查是否是重复的执行记录
+            if execution_key in seen_executions:
+                duplicate_count += 1
+                # print(f"⚠ Warning: Duplicate execution found: {execution['request_id']} on GPU {execution['gpu_id']} ({execution['start_time']} - {execution['end_time']})")
+                continue
+            
+            seen_executions.add(execution_key)
             gpu_id = execution["gpu_id"]
             self.executions_by_gpu[gpu_id].append(execution)
 
@@ -70,7 +88,10 @@ class GPUExecutionChecker:
         for gpu_id in self.executions_by_gpu:
             self.executions_by_gpu[gpu_id].sort(key=lambda x: x["start_time"])
 
-        print(f"✓ Grouped {len(self.data['executions'])} executions across {len(self.executions_by_gpu)} GPUs")
+        if duplicate_count > 0:
+            print(f"⚠ Found and skipped {duplicate_count} duplicate execution records")
+        
+        print(f"✓ Grouped {len(self.data['executions']) - duplicate_count} unique executions across {len(self.executions_by_gpu)} GPUs")
 
     def check_overlaps(self) -> bool:
         """Check for overlapping executions on each GPU."""

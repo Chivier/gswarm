@@ -1,0 +1,29 @@
+{
+  "total_requests": 1000,
+  "workflow_distribution": {
+    "research_synthesis_pipeline": 330,
+    "multimodal_content_creation": 321,
+    "advanced_code_analysis": 349
+  },
+  "gpu_hours_by_model": {
+    "llama2_13b_base": 11.887142857142875,
+    "code_llama_13b": 10.122592592592598,
+    "mixtral_8x7b": 16.940138888888896,
+    "clip_vit_large": 0.01849585393633527,
+    "llama2_70b_base": 192.21314814814806,
+    "whisper_large": 0.08881362912396165,
+    "code_llama_7b": 2.4758641975308633,
+    "stable_diffusion_xl": 0.3581255024091413,
+    "stable_diffusion_v1_5": 0.17947561388930833
+  },
+  "base_model_usage": {
+    "mixtral_8x7b": 679,
+    "clip_vit_large": 330,
+    "llama2_13b_base": 1000,
+    "llama2_70b_base": 679,
+    "whisper_large": 321,
+    "stable_diffusion_xl": 321,
+    "stable_diffusion_v1_5": 321,
+    "llama2_7b_base": 670
+  }
+}

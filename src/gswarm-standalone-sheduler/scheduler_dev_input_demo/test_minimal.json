@@ -16,7 +16,10 @@
       "memory_gb": 8,
       "tokens_per_second": 60,
       "token_mean": 384,
-      "token_std": 96
+      "token_std": 96,
+      "type": "llm",
+      "gpus_required": 1,
+      "load_time_seconds": 2
     },
     "simple_diffusion": {
       "name": "Simple-Diffusion",
@@ -27,7 +30,10 @@
       "inference_time_mean": 1.0,
       "inference_time_std": 0.2,
       "config": {
-        "size": ["small", "medium"]
+        "size": [
+          "small",
+          "medium"
+        ]
       }
     }
   },
@@ -39,8 +45,12 @@
         {
           "id": "chat_response",
           "model": "tiny_llm",
-          "inputs": ["user_message"],
-          "outputs": ["bot_response"]
+          "inputs": [
+            "user_message"
+          ],
+          "outputs": [
+            "bot_response"
+          ]
         }
       ],
       "edges": []
@@ -52,20 +62,33 @@
         {
           "id": "prompt_improvement",
           "model": "fast_llm",
-          "inputs": ["user_prompt"],
-          "outputs": ["improved_prompt"]
+          "inputs": [
+            "user_prompt"
+          ],
+          "outputs": [
+            "improved_prompt"
+          ]
         },
         {
           "id": "image_gen",
           "model": "simple_diffusion",
-          "inputs": ["improved_prompt"],
-          "outputs": ["image"],
-          "config_options": ["size"]
+          "inputs": [
+            "improved_prompt"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "config_options": [
+            "size"
+          ]
         }
       ],
       "edges": [
-        {"from": "prompt_improvement", "to": "image_gen"}
+        {
+          "from": "prompt_improvement",
+          "to": "image_gen"
+        }
       ]
     }
   }
-} 
+}
