@@ -914,7 +914,7 @@ async def estimate_model(instance_id: str, request: EstimateRequest):
             success=True,
             message="Estimation completed",
             data={
-                "estimated_execution_time": estimated_time,
+                "estimated_execution_time": estimated_time[0],
                 "estimated_time_unit": "seconds",
                 "model_type": model_type,
                 "instance_id": instance_id,
@@ -957,9 +957,7 @@ async def estimate_model_direct(request: DirectEstimateRequest):
             temperature = input_data.get("temperature", 0.7)
 
             # Add relevant features for cost estimation
-            data_features.extend(
-                [f"prompt_length:{len(prompt)}", f"max_length:{max_length}", f"temperature:{temperature}"]
-            )
+            data_features.extend([{"prompt_length": len(prompt), "max_length": max_length, "temperature": temperature}])
 
         elif model_type == "diffusion":
             if "prompt" not in input_data:
@@ -971,17 +969,24 @@ async def estimate_model_direct(request: DirectEstimateRequest):
 
             # Add relevant features for cost estimation
             data_features.extend(
-                [f"prompt_length:{len(prompt)}", f"steps:{num_inference_steps}", f"guidance_scale:{guidance_scale}"]
+                [
+                    {
+                        "height": input_data["height"],
+                        "width": input_data["width"],
+                        "steps": num_inference_steps,
+                        "guidance_scale": guidance_scale,
+                    }
+                ]
             )
 
         # Get estimation from cost module
-        estimated_time = get_estimation_cost(model_name, device, data_features)
+        estimated_time = get_estimation_cost(model_type, model_name, device, data_features)
 
         return StandardResponse(
             success=True,
             message="Direct estimation completed",
             data={
-                "estimated_execution_time": estimated_time,
+                "estimated_execution_time": estimated_time[0],
                 "estimated_time_unit": "seconds",
                 "model_type": model_type,
                 "model_name": model_name,
@@ -992,7 +997,11 @@ async def estimate_model_direct(request: DirectEstimateRequest):
         )
 
     except Exception as e:
+        import traceback
+
         logger.error(f"Direct estimation failed for {model_name}: {e}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+
         raise HTTPException(status_code=500, detail=str(e))
 
 

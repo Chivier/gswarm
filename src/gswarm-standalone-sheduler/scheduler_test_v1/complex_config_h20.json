@@ -73,7 +73,7 @@
     },
     "stable_diffusion_xl": {
       "name": "Stable-Diffusion-XL",
-      "type": "image_generation",
+      "type": "diffusion",
       "memory_gb": 12,
       "gpus_required": 1,
       "load_time_seconds": 8,
@@ -104,7 +104,7 @@
     },
     "stable_diffusion_v1_5": {
       "name": "Stable-Diffusion-v1.5",
-      "type": "image_generation",
+      "type": "diffusion",
       "memory_gb": 8,
       "gpus_required": 1,
       "load_time_seconds": 6,

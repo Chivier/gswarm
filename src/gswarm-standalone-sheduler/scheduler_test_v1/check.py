@@ -61,7 +61,7 @@ class GPUExecutionChecker:
         """Group executions by GPU ID and sort by start time."""
         seen_executions = set()  # 用于跟踪已见过的执行记录
         duplicate_count = 0
-        
+
         for execution in self.data["executions"]:
             # Validate required fields
             required_fields = ["gpu_id", "start_time", "end_time", "request_id"]
@@ -75,15 +75,15 @@ class GPUExecutionChecker:
                 execution["gpu_id"],
                 execution["request_id"],
                 execution["start_time"],
-                execution["end_time"]
+                execution["end_time"],
             )
-            
+
             # 检查是否是重复的执行记录
             if execution_key in seen_executions:
                 duplicate_count += 1
                 # print(f"⚠ Warning: Duplicate execution found: {execution['request_id']} on GPU {execution['gpu_id']} ({execution['start_time']} - {execution['end_time']})")
                 continue
-            
+
             seen_executions.add(execution_key)
             gpu_id = execution["gpu_id"]
             self.executions_by_gpu[gpu_id].append(execution)
@@ -94,8 +94,10 @@ class GPUExecutionChecker:
 
         if duplicate_count > 0:
             print(f"⚠ Found and skipped {duplicate_count} duplicate execution records")
-        
-        print(f"✓ Grouped {len(self.data['executions']) - duplicate_count} unique executions across {len(self.executions_by_gpu)} GPUs")
+
+        print(
+            f"✓ Grouped {len(self.data['executions']) - duplicate_count} unique executions across {len(self.executions_by_gpu)} GPUs"
+        )
 
     def check_overlaps(self) -> bool:
         """Check for overlapping executions on each GPU."""
@@ -143,7 +145,7 @@ class GPUExecutionChecker:
 
         # Two intervals overlap if: start1 < end2 AND start2 < end1
         return start1 < end2 and start2 < end1
-    
+
     def calculate_latency_metrics(self):
         """Calculate P99 and average waiting time metrics."""
         # Group executions by request
@@ -151,35 +153,35 @@ class GPUExecutionChecker:
         for execution in self.data["executions"]:
             request_id = execution.get("request_id", "unknown")
             request_executions[request_id].append(execution)
-        
+
         # Calculate metrics for each request
         request_response_times = []
-        
+
         for request_id, executions in request_executions.items():
             if not executions:
                 continue
-            
+
             # Sort by start time
             executions.sort(key=lambda x: x.get("start_time", 0))
-            
+
             # Request arrival time (earliest start time)
-            request_start = min(e.get("start_time", float('inf')) for e in executions)
+            request_start = min(e.get("start_time", float("inf")) for e in executions)
             # Request completion time (latest end time)
             request_end = max(e.get("end_time", 0) for e in executions)
-            
-            if request_start < float('inf') and request_end > 0:
+
+            if request_start < float("inf") and request_end > 0:
                 response_time = request_end - request_start
                 request_response_times.append(response_time)
-            
+
             # Collect waiting times from executions
             for execution in executions:
                 waiting_time = execution.get("waiting_time")
                 if waiting_time is not None:
                     self.waiting_times.append(waiting_time)
-        
+
         # Store request response times
         self.response_times = request_response_times
-        
+
         # Calculate metrics from summary if available
         summary = self.data.get("summary", {})
         self.avg_waiting_time_summary = summary.get("avg_waiting_time")
@@ -219,18 +221,18 @@ class GPUExecutionChecker:
 
         # Print latency metrics
         print(f"\nLatency Metrics:")
-        
+
         # Task-level metrics from summary
-        if hasattr(self, 'avg_waiting_time_summary') and self.avg_waiting_time_summary is not None:
+        if hasattr(self, "avg_waiting_time_summary") and self.avg_waiting_time_summary is not None:
             print(f"  Task-level (from summary):")
             print(f"    Average waiting time: {self.avg_waiting_time_summary:.2f} seconds")
-            if hasattr(self, 'p99_waiting_time_summary') and self.p99_waiting_time_summary is not None:
+            if hasattr(self, "p99_waiting_time_summary") and self.p99_waiting_time_summary is not None:
                 print(f"    P99 waiting time: {self.p99_waiting_time_summary:.2f} seconds")
-            if hasattr(self, 'avg_response_time_summary') and self.avg_response_time_summary is not None:
+            if hasattr(self, "avg_response_time_summary") and self.avg_response_time_summary is not None:
                 print(f"    Average response time: {self.avg_response_time_summary:.2f} seconds")
-            if hasattr(self, 'p99_response_time_summary') and self.p99_response_time_summary is not None:
+            if hasattr(self, "p99_response_time_summary") and self.p99_response_time_summary is not None:
                 print(f"    P99 response time: {self.p99_response_time_summary:.2f} seconds")
-        
+
         # Task-level metrics from execution data
         elif self.waiting_times:
             print(f"  Task-level (calculated from executions):")
@@ -238,14 +240,17 @@ class GPUExecutionChecker:
             p99_waiting = np.percentile(self.waiting_times, 99)
             print(f"    Average waiting time: {avg_waiting:.2f} seconds")
             print(f"    P99 waiting time: {p99_waiting:.2f} seconds")
-        
+
         # Request-level metrics from summary
-        if hasattr(self, 'avg_request_response_time_summary') and self.avg_request_response_time_summary is not None:
+        if hasattr(self, "avg_request_response_time_summary") and self.avg_request_response_time_summary is not None:
             print(f"  Request-level (from summary):")
             print(f"    Average response time: {self.avg_request_response_time_summary:.2f} seconds")
-            if hasattr(self, 'p99_request_response_time_summary') and self.p99_request_response_time_summary is not None:
+            if (
+                hasattr(self, "p99_request_response_time_summary")
+                and self.p99_request_response_time_summary is not None
+            ):
                 print(f"    P99 response time: {self.p99_request_response_time_summary:.2f} seconds")
-        
+
         # Request-level metrics from execution data
         elif self.response_times:
             print(f"  Request-level (calculated from executions):")
@@ -253,7 +258,7 @@ class GPUExecutionChecker:
             p99_response = np.percentile(self.response_times, 99)
             print(f"    Average response time: {avg_response:.2f} seconds")
             print(f"    P99 response time: {p99_response:.2f} seconds")
-        
+
         # Model switching metrics
         print(f"\nModel Switching Metrics:")
         total_switches = summary.get("total_model_switches", "N/A")
@@ -328,7 +333,7 @@ class GPUExecutionChecker:
         # Group executions and check for overlaps
         self.group_executions_by_gpu()
         is_valid = self.check_overlaps()
-        
+
         # Calculate latency metrics
         self.calculate_latency_metrics()
 

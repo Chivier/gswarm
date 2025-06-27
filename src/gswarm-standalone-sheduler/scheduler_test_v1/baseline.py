@@ -125,6 +125,7 @@ class NodeExecution:
     estimated_time: Optional[float] = None
     switch_time: float = 0.0  # Time spent switching models
     ready_time: float = 0.0  # When the task became ready
+    arrival_time: float = 0.0  # When the request arrived
 
     @property
     def execution_time(self) -> Optional[float]:
@@ -328,6 +329,16 @@ class BaselineScheduler:
                 "llm7b": "gpt2",
                 "llm30b": "gpt2-medium",
                 "stable_diffusion": "CompVis/stable-diffusion-v1-4",
+                "llama2_7b_base": "meta-llama/Meta-Llama-3-8B",
+                "llama2_13b_base": "meta-llama/Llama-3.2-11B-Vision",
+                "llama2_70b_base": "meta-llama/Llama-3.3-70B-Instruct",
+                "code_llama_7b": "codellama/CodeLlama-7b-Instruct-hf",
+                "code_llama_13b": "codellama/CodeLlama-13b-Instruct-hf",
+                "mixtral_8x7b": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+                "clip_vit_large": "openai/clip-vit-large-patch14",
+                "stable_diffusion_xl": "stabilityai/stable-diffusion-xl-base-1.0",
+                "stable_diffusion_v1_5": "runwayml/stable-diffusion-v1-5",
+                "whisper_large": "openai/whisper-large-v3",
             }
 
             actual_model_name = model_name_map.get(model_id, "gpt2")
@@ -478,11 +489,11 @@ class BaselineScheduler:
     def _schedule_node_execution(self, node_exec: NodeExecution, request: Request):
         """Schedule a node execution on its assigned GPU(s)"""
         model_name = node_exec.model_name
-        model_info = self.models[model_name]
-        
+        _ = self.models[model_name]
+
         # Get all GPUs involved
         gpu_ids = node_exec.gpu_ids if node_exec.gpu_ids else [node_exec.gpu_id]
-        
+
         # Calculate when this node can actually start (when all required GPUs are available)
         start_time = max(self.gpu_states[gpu_id].available_at for gpu_id in gpu_ids)
         start_time = max(self.current_sim_time, start_time)
@@ -491,7 +502,7 @@ class BaselineScheduler:
         primary_gpu_id = node_exec.gpu_id
         primary_gpu_state = self.gpu_states[primary_gpu_id]
         switch_time = 0.0
-        
+
         if primary_gpu_state.current_model != model_name:
             switch_time = self._get_model_switch_time(primary_gpu_state.current_model, model_name)
             if primary_gpu_state.current_model is not None:  # Don't count initial load as switch
@@ -555,8 +566,9 @@ class BaselineScheduler:
         # Try to schedule more work
         self._try_schedule_ready_nodes()
 
-    def _process_request(self, request: Request):
+    def _process_request(self, event: Event):
         """Process a single request by creating node executions"""
+        request = event.data["request"]
         workflow = self.workflows[request.workflow_id]
         dependencies = workflow.get_dependencies()
 
@@ -570,7 +582,11 @@ class BaselineScheduler:
         for node in workflow.nodes:
             node_key = f"{request.request_id}_{node.id}"
             node_exec = NodeExecution(
-                request_id=request.request_id, workflow_id=request.workflow_id, node_id=node.id, model_name=node.model
+                request_id=request.request_id,
+                workflow_id=request.workflow_id,
+                node_id=node.id,
+                model_name=node.model,
+                arrival_time=event.timestamp,
             )
             node_execs[node.id] = node_exec
             self.executions[node_key] = node_exec
@@ -707,7 +723,7 @@ class BaselineScheduler:
 
             # Process event
             if event.event_type == "request_arrival":
-                self._process_request(event.data["request"])
+                self._process_request(event)
             elif event.event_type == "node_complete":
                 self._handle_node_completion(event.data["node_exec"], event.data["request"])
 
@@ -783,7 +799,7 @@ class BaselineScheduler:
             model_counts[exec.model_name] += 1
         for model, count in sorted(model_counts.items()):
             logger.info(f"  {model}: {count} executions")
-        
+
         # Model switching statistics
         logger.info(f"\nModel switching:")
         logger.info(f"  Total switches: {self.model_switch_count}")
@@ -801,26 +817,29 @@ class BaselineScheduler:
 
         # Calculate latency metrics
         makespan = max(e.end_time for e in self.completed_executions) if self.completed_executions else 0
-        
+
         # Task-level metrics (waiting time and response time)
         task_waiting_times = []
         task_response_times = []
         for exec in self.completed_executions:
             # Waiting time: from when task was ready to when it started
             # For simplicity, we'll use 0 as ready time for all tasks in offline mode
-            waiting_time = exec.start_time
+            if self.mode == "offline":
+                waiting_time = exec.start_time
+            else:
+                waiting_time = exec.start_time - exec.arrival_time
             task_waiting_times.append(waiting_time)
-            
+
             # Response time: from ready to completion
             response_time = exec.end_time
             task_response_times.append(response_time)
-        
+
         # Request-level response times
         request_response_times = []
         for req_id, end_time in self.request_end_times.items():
             start_time = self.request_start_times.get(req_id, 0)
             request_response_times.append(end_time - start_time)
-        
+
         # Calculate percentiles
         avg_waiting_time = np.mean(task_waiting_times) if task_waiting_times else 0.0
         p99_waiting_time = np.percentile(task_waiting_times, 99) if task_waiting_times else 0.0
@@ -828,10 +847,12 @@ class BaselineScheduler:
         p99_response_time = np.percentile(task_response_times, 99) if task_response_times else 0.0
         avg_request_response_time = np.mean(request_response_times) if request_response_times else 0.0
         p99_request_response_time = np.percentile(request_response_times, 99) if request_response_times else 0.0
-        
+
         log_data = {
             "summary": {
-                "total_requests": len(self.all_requests) if hasattr(self, 'all_requests') else len(self.request_end_times),
+                "total_requests": len(self.all_requests)
+                if hasattr(self, "all_requests")
+                else len(self.request_end_times),
                 "completed_requests": len(self.request_end_times),
                 "total_nodes_executed": len(self.completed_executions),
                 "mode": self.mode,
@@ -853,7 +874,7 @@ class BaselineScheduler:
         for exec in sorted(self.completed_executions, key=lambda e: e.start_time):
             # Calculate waiting time
             waiting_time = exec.start_time - exec.switch_time - exec.ready_time if exec.start_time else 0.0
-            
+
             exec_data = {
                 "request_id": exec.request_id,
                 "workflow_id": exec.workflow_id,

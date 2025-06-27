@@ -1,6 +1,7 @@
 """
 Scheduler Components - Basic data structures and class definitions
 """
+
 from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional, Set
 from datetime import datetime
@@ -10,6 +11,7 @@ from collections import defaultdict
 @dataclass
 class ModelInfo:
     """Model configuration information"""
+
     name: str
     memory_gb: float
     gpus_required: int
@@ -24,6 +26,7 @@ class ModelInfo:
 @dataclass
 class WorkflowNode:
     """Workflow node definition"""
+
     id: str
     model: str
     inputs: List[str]
@@ -34,6 +37,7 @@ class WorkflowNode:
 @dataclass
 class WorkflowEdge:
     """Workflow edge definition"""
+
     from_node: str
     to_node: str
 
@@ -41,6 +45,7 @@ class WorkflowEdge:
 @dataclass
 class Workflow:
     """Workflow definition"""
+
     id: str
     name: str
     nodes: List[WorkflowNode]
@@ -68,6 +73,7 @@ class Workflow:
 @dataclass
 class Request:
     """Workflow request"""
+
     request_id: str
     timestamp: datetime
     workflow_id: str
@@ -79,6 +85,7 @@ class Request:
 @dataclass
 class NodeExecution:
     """Execution state for a node"""
+
     request_id: str
     workflow_id: str
     node_id: str
@@ -86,13 +93,13 @@ class NodeExecution:
     estimated_time: float
     dependencies: Set[str] = field(default_factory=set)
     level: int = 0  # Topological level
-    
+
     # Execution tracking
     status: str = "pending"  # pending, ready, scheduled, completed
     start_time: Optional[float] = None
     end_time: Optional[float] = None
     gpu_id: Optional[int] = None
-    
+
     @property
     def node_key(self) -> str:
         return f"{self.request_id}_{self.node_id}"
@@ -101,6 +108,7 @@ class NodeExecution:
 @dataclass
 class GPUState:
     """GPU state tracking"""
+
     gpu_id: int
     current_model: Optional[str] = None
     available_at: float = 0.0
@@ -111,8 +119,9 @@ class GPUState:
 @dataclass
 class ScheduledTask:
     """A scheduled task"""
+
     node: NodeExecution
     gpu_id: int
     start_time: float
     end_time: float
-    switch_time: float = 0.0 
+    switch_time: float = 0.0
