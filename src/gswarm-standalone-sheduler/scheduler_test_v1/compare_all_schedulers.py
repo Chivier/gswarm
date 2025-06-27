@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Compare all schedulers: baseline, offline, and online
+Compare all schedulers: baseline, offline, online, and static
 """
 
 import subprocess
@@ -38,7 +38,7 @@ def run_scheduler(scheduler_type, config_file, requests_file, gpus=4, extra_args
             "true",
         ]
         log_file = "offline_execution_log.json"
-    else:  # online
+    elif scheduler_type == "online":
         cmd = [
             "python",
             "online_scheduler.py",
@@ -54,6 +54,22 @@ def run_scheduler(scheduler_type, config_file, requests_file, gpus=4, extra_args
         if extra_args:
             cmd.extend(extra_args)
         log_file = "online_execution_log.json"
+    else:  # static
+        cmd = [
+            "python",
+            "static_scheduler.py",
+            "--gpus",
+            str(gpus),
+            "--config",
+            config_file,
+            "--requests",
+            requests_file,
+            "--simulate",
+            "true",
+        ]
+        if extra_args:
+            cmd.extend(extra_args)
+        log_file = "static_execution_log.json"
 
     print(f"\nRunning {scheduler_type} scheduler...")
     if scheduler_type == "online" and extra_args:
@@ -139,11 +155,11 @@ def run_scheduler(scheduler_type, config_file, requests_file, gpus=4, extra_args
         return None
 
 
-def compare_metrics(baseline_metrics, offline_metrics, online_metrics):
+def compare_metrics(baseline_metrics, offline_metrics, online_metrics, static_metrics):
     """Compare metrics between schedulers"""
-    print("\n" + "=" * 100)
+    print("\n" + "=" * 120)
     print("SCHEDULER COMPARISON")
-    print("=" * 100)
+    print("=" * 120)
 
     # Metrics to compare
     metrics_info = [
@@ -156,17 +172,18 @@ def compare_metrics(baseline_metrics, offline_metrics, online_metrics):
         ("P99 request response (s)", "p99_request_response_time"),
     ]
 
-    print(f"{'Metric':<25} {'Baseline':>15} {'Offline':>15} {'Online':>15} {'Online vs BL':>20}")
-    print("-" * 100)
+    print(f"{'Metric':<25} {'Baseline':>15} {'Offline':>15} {'Online':>15} {'Static':>15} {'Static vs BL':>20}")
+    print("-" * 120)
 
     for display_name, key in metrics_info:
         baseline_val = baseline_metrics.get(key, "N/A")
         offline_val = offline_metrics.get(key, "N/A")
         online_val = online_metrics.get(key, "N/A")
+        static_val = static_metrics.get(key, "N/A")
 
         # Format values and calculate improvement
-        if isinstance(baseline_val, (int, float)) and isinstance(online_val, (int, float)):
-            improvement = ((baseline_val - online_val) / baseline_val * 100) if baseline_val > 0 else 0
+        if isinstance(baseline_val, (int, float)) and isinstance(static_val, (int, float)):
+            improvement = ((baseline_val - static_val) / baseline_val * 100) if baseline_val > 0 else 0
 
             if key in ["avg_waiting_time", "p99_waiting_time"]:
                 # For waiting time, lower is better
@@ -178,12 +195,15 @@ def compare_metrics(baseline_metrics, offline_metrics, online_metrics):
                 improvement_str = f"{improvement:+.1f}%"
 
             print(
-                f"{display_name:<25} {baseline_val:>15.2f} {offline_val if isinstance(offline_val, str) else f'{offline_val:>15.2f}'} "
-                f"{online_val:>15.2f} {improvement_str:>20}"
+                f"{display_name:<25} {baseline_val:>15.2f} "
+                f"{offline_val if isinstance(offline_val, str) else f'{offline_val:>15.2f}'} "
+                f"{online_val if isinstance(online_val, str) else f'{online_val:>15.2f}'} "
+                f"{static_val:>15.2f} {improvement_str:>20}"
             )
         else:
             print(
-                f"{display_name:<25} {str(baseline_val):>15} {str(offline_val):>15} {str(online_val):>15} {'N/A':>20}"
+                f"{display_name:<25} {str(baseline_val):>15} {str(offline_val):>15} "
+                f"{str(online_val):>15} {str(static_val):>15} {'N/A':>20}"
             )
 
     print("\n" + "=" * 100)
@@ -257,10 +277,16 @@ def main():
     online_metrics = run_scheduler("online", config_file, requests_file, gpus, online_args)
     if not online_metrics:
         print("Failed to get online metrics")
-        return
+        online_metrics = {}
+
+    # Run static
+    static_metrics = run_scheduler("static", config_file, requests_file, gpus)
+    if not static_metrics:
+        print("Failed to get static metrics")
+        static_metrics = {}
 
     # Compare results
-    compare_metrics(baseline_metrics, offline_metrics, online_metrics)
+    compare_metrics(baseline_metrics, offline_metrics, online_metrics, static_metrics)
 
 
 if __name__ == "__main__":

@@ -107,7 +107,7 @@ class Event:
 class StaticScheduler:
     """Static deployment scheduler with persistent model loading"""
 
-    def __init__(self, gpus: List[int], gpus_per_server: int = 4, simulate: bool = False, mode: str = "offline"):
+    def __init__(self, gpus: List[int], gpus_per_server: int = 8, simulate: bool = False, mode: str = "offline"):
         self.gpus = gpus
         self.gpus_per_server = gpus_per_server
         self.simulate = simulate
@@ -242,7 +242,7 @@ class StaticScheduler:
         }
 
     def assign_models_to_gpus(self, analysis: Dict[str, Any]):
-        """Assign models to GPUs based on analysis"""
+        """Assign models to GPUs based on analysis with replication for scaling"""
         self.logger.info("Assigning models to GPUs...")
 
         # Initialize GPU states
@@ -257,54 +257,192 @@ class StaticScheduler:
             end_gpu = min(start_gpu + self.gpus_per_server, len(self.gpus))
             self.servers[server_id] = ServerInfo(server_id=server_id, gpu_ids=self.gpus[start_gpu:end_gpu])
 
-        # Simple assignment strategy: distribute models based on usage
-        # More sophisticated strategies can be implemented based on the slides
+        # Calculate model replicas needed based on usage and available GPUs
         model_usage = analysis["model_usage"]
-        sorted_models = sorted(model_usage.items(), key=lambda x: x[1], reverse=True)
-
-        # Round-robin assignment with affinity consideration
-        gpu_idx = 0
-        for model_name, usage_count in sorted_models:
+        total_usage = sum(model_usage.values())
+        total_gpus = len(self.gpus)
+        
+        # Separate single-GPU and multi-GPU models
+        single_gpu_models = []
+        multi_gpu_models = []
+        
+        for model_name, usage_count in model_usage.items():
             model_info = self.models[model_name]
-
-            # For multi-GPU models, assign to consecutive GPUs in same server
             if model_info.gpus_required > 1:
-                # Find a server with enough consecutive GPUs
-                assigned = False
-                for server in self.servers.values():
-                    available_gpus = []
-                    for gpu_id in server.gpu_ids:
-                        if len(self.gpu_states[gpu_id].assigned_models) == 0:
-                            available_gpus.append(gpu_id)
-                            if len(available_gpus) >= model_info.gpus_required:
-                                # Assign to these GPUs
-                                for i in range(model_info.gpus_required):
-                                    self.gpu_states[available_gpus[i]].assigned_models.add(model_name)
-                                    self.model_to_gpus[model_name].append(available_gpus[i])
-                                server.models.add(model_name)
-                                assigned = True
-                                break
-                    if assigned:
-                        break
-
-                if not assigned:
-                    self.logger.warning(f"Could not assign multi-GPU model {model_name}")
+                multi_gpu_models.append((model_name, usage_count, model_info))
             else:
-                # Single GPU model - use round-robin
-                gpu_id = self.gpus[gpu_idx % len(self.gpus)]
+                single_gpu_models.append((model_name, usage_count, model_info))
+        
+        # Strategy: For smaller GPU counts, prioritize having all models available
+        # For larger GPU counts, allow replication based on usage
+        
+        # Calculate minimum GPUs needed for one instance of each model
+        min_gpus_needed = 0
+        for model_name, _, model_info in single_gpu_models:
+            min_gpus_needed += 1  # Each single-GPU model needs at least 1 GPU
+        for model_name, _, model_info in multi_gpu_models:
+            min_gpus_needed += model_info.gpus_required
+            
+        if total_gpus < min_gpus_needed:
+            # Not enough GPUs for all models - prioritize by usage
+            self.logger.warning(f"Only {total_gpus} GPUs available but {min_gpus_needed} needed for all models")
+            
+            # Allocate to highest-usage models first
+            all_models = [(name, usage, info) for name, usage, info in single_gpu_models + multi_gpu_models]
+            all_models.sort(key=lambda x: x[1], reverse=True)
+            
+            # Track how many GPUs we've assigned
+            gpus_assigned = 0
+            models_to_assign = []
+            
+            for model_name, usage_count, model_info in all_models:
+                if gpus_assigned + model_info.gpus_required <= total_gpus:
+                    models_to_assign.append((model_name, usage_count, model_info, 1))  # 1 replica
+                    gpus_assigned += model_info.gpus_required
+                    
+            # Update lists with what we can actually assign
+            single_gpu_models = [(n, u, 1) for n, u, i, r in models_to_assign if i.gpus_required == 1]
+            multi_gpu_models = [(n, u, i) for n, u, i, r in models_to_assign if i.gpus_required > 1]
+            
+        else:
+            # We have enough GPUs for at least one instance of each model
+            # Calculate how to distribute remaining GPUs for replication
+            remaining_gpus = total_gpus - min_gpus_needed
+            
+            # Convert single_gpu_models to include replica count
+            single_gpu_with_replicas = []
+            for model_name, usage_count, model_info in single_gpu_models:
+                base_replicas = 1
+                if remaining_gpus > 0 and total_usage > 0:
+                    # Add extra replicas based on usage proportion
+                    usage_ratio = usage_count / total_usage
+                    extra_replicas = int(remaining_gpus * usage_ratio)
+                    base_replicas += extra_replicas
+                single_gpu_with_replicas.append((model_name, usage_count, base_replicas))
+                
+            single_gpu_models = single_gpu_with_replicas
+                
+        # Sort models by usage for priority assignment
+        single_gpu_models.sort(key=lambda x: x[1], reverse=True)
+        multi_gpu_models.sort(key=lambda x: x[1], reverse=True)
+        
+        # Track assigned GPUs
+        assigned_gpus = set()
+        
+        # Log multi-GPU models to be assigned
+        self.logger.info(f"Multi-GPU models to assign: {[(m[0], m[2].gpus_required) for m in multi_gpu_models]}")
+        
+        # First assign multi-GPU models to ensure they get consecutive GPUs
+        for model_name, usage_count, model_info in multi_gpu_models:
+            # Try to assign at least one instance per server if possible
+            assigned_this_model = False
+            for server in self.servers.values():
+                if assigned_this_model:
+                    break
+                    
+                available_in_server = [gpu_id for gpu_id in server.gpu_ids if gpu_id not in assigned_gpus]
+                
+                if len(available_in_server) >= model_info.gpus_required:
+                    self.logger.info(f"Server {server.server_id} has {len(available_in_server)} available GPUs for {model_name} (needs {model_info.gpus_required})")
+                    
+                    # For models that need full server (8 GPUs), check if we have exactly that
+                    if model_info.gpus_required == len(server.gpu_ids) and len(available_in_server) == len(server.gpu_ids):
+                        # Assign all GPUs in this server
+                        for gpu_id in available_in_server:
+                            self.gpu_states[gpu_id].assigned_models.add(model_name)
+                            self.model_to_gpus[model_name].append(gpu_id)
+                            assigned_gpus.add(gpu_id)
+                        server.models.add(model_name)
+                        assigned_this_model = True
+                        self.logger.info(f"Assigned {model_name} to full server {server.server_id}")
+                        break
+                    
+                    # Check for consecutive GPUs for smaller multi-GPU models
+                    for i in range(len(available_in_server) - model_info.gpus_required + 1):
+                        consecutive_gpus = available_in_server[i:i + model_info.gpus_required]
+                        
+                        # Verify they are actually consecutive
+                        if len(consecutive_gpus) == model_info.gpus_required and all(consecutive_gpus[j] + 1 == consecutive_gpus[j + 1] for j in range(len(consecutive_gpus) - 1)):
+                            # Assign model to these GPUs
+                            for gpu_id in consecutive_gpus:
+                                self.gpu_states[gpu_id].assigned_models.add(model_name)
+                                self.model_to_gpus[model_name].append(gpu_id)
+                                assigned_gpus.add(gpu_id)
+                            server.models.add(model_name)
+                            assigned_this_model = True
+                            self.logger.info(f"Assigned {model_name} to GPUs {consecutive_gpus} on server {server.server_id}")
+                            break
+                            
+            if not assigned_this_model:
+                self.logger.warning(f"Could not assign multi-GPU model {model_name} (requires {model_info.gpus_required} GPUs)")
+                        
+        # Then assign single-GPU models with replication
+        remaining_gpus = [gpu_id for gpu_id in self.gpus if gpu_id not in assigned_gpus]
+        
+        # Distribute single-GPU models across remaining GPUs
+        if remaining_gpus and single_gpu_models:
+            # Calculate actual replicas based on remaining GPUs
+            total_desired_replicas = sum(replicas for _, _, replicas in single_gpu_models)
+            
+            # Adjust replicas if needed
+            if total_desired_replicas > len(remaining_gpus):
+                scale_factor = len(remaining_gpus) / total_desired_replicas
+                for i in range(len(single_gpu_models)):
+                    model_name, usage_count, desired_replicas = single_gpu_models[i]
+                    actual_replicas = max(1, int(desired_replicas * scale_factor))
+                    single_gpu_models[i] = (model_name, usage_count, actual_replicas)
+            
+            # Assign models with replication
+            gpu_idx = 0
+            for model_name, usage_count, replicas in single_gpu_models:
+                model_info = self.models[model_name]
+                
+                # Assign specified number of replicas
+                assigned_count = 0
+                for _ in range(replicas):
+                    if gpu_idx < len(remaining_gpus):
+                        gpu_id = remaining_gpus[gpu_idx]
+                        self.gpu_states[gpu_id].assigned_models.add(model_name)
+                        self.model_to_gpus[model_name].append(gpu_id)
+                        
+                        # Update server models
+                        server_id = self.gpu_states[gpu_id].server_id
+                        self.servers[server_id].models.add(model_name)
+                        
+                        gpu_idx += 1
+                        assigned_count += 1
+                
+                if assigned_count > 0:
+                    self.logger.info(f"  Model {model_name}: {assigned_count} replicas (usage: {usage_count})")
+        
+        # If there are still unassigned GPUs, distribute most-used models to them
+        unassigned_gpus = [gpu_id for gpu_id in self.gpus if len(self.gpu_states[gpu_id].assigned_models) == 0]
+        if unassigned_gpus and single_gpu_models:
+            gpu_idx = 0
+            for gpu_id in unassigned_gpus:
+                # Assign most-used single-GPU model
+                model_name = single_gpu_models[gpu_idx % len(single_gpu_models)][0]
                 self.gpu_states[gpu_id].assigned_models.add(model_name)
                 self.model_to_gpus[model_name].append(gpu_id)
-
+                
                 # Update server models
                 server_id = self.gpu_states[gpu_id].server_id
                 self.servers[server_id].models.add(model_name)
-
+                
                 gpu_idx += 1
 
         # Log assignment results
         self.logger.info("Model-to-GPU assignment completed:")
+        model_replica_count = defaultdict(int)
         for gpu_id, gpu_state in self.gpu_states.items():
             self.logger.info(f"  GPU {gpu_id} (Server {gpu_state.server_id}): {gpu_state.assigned_models}")
+            for model in gpu_state.assigned_models:
+                model_replica_count[model] += 1
+                
+        self.logger.info("\nModel replica summary:")
+        for model_name, count in sorted(model_replica_count.items()):
+            usage = model_usage.get(model_name, 0)
+            self.logger.info(f"  {model_name}: {count} replicas (usage count: {usage})")
 
     def _find_gpu_for_model(self, model_name: str, current_time: float) -> Optional[int]:
         """Find an available GPU that has the required model"""
@@ -771,7 +909,7 @@ class StaticScheduler:
 def main():
     parser = argparse.ArgumentParser(description="Static deployment scheduler for GSwarm workflows")
     parser.add_argument("--gpus", type=int, required=True, help="Number of available GPUs")
-    parser.add_argument("--gpus-per-server", type=int, default=4, help="Number of GPUs per server (default: 4)")
+    parser.add_argument("--gpus-per-server", type=int, default=8, help="Number of GPUs per server (default: 8)")
     parser.add_argument(
         "--simulate",
         type=lambda x: x.lower() == "true",
