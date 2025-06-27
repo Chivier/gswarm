@@ -284,25 +284,47 @@ class StaticScheduler:
             min_gpus_needed += model_info.gpus_required
             
         if total_gpus < min_gpus_needed:
-            # Not enough GPUs for all models - prioritize by usage
+            # Not enough GPUs for all models - need to make hard choices
             self.logger.warning(f"Only {total_gpus} GPUs available but {min_gpus_needed} needed for all models")
             
-            # Allocate to highest-usage models first
+            # First, ensure all models that are actually used get at least one instance
+            # This prevents the "No GPU has model X loaded!" error
             all_models = [(name, usage, info) for name, usage, info in single_gpu_models + multi_gpu_models]
-            all_models.sort(key=lambda x: x[1], reverse=True)
             
-            # Track how many GPUs we've assigned
+            # Separate models that are used vs unused
+            used_models = [(n, u, i) for n, u, i in all_models if u > 0]
+            unused_models = [(n, u, i) for n, u, i in all_models if u == 0]
+            
+            # Sort used models by usage
+            used_models.sort(key=lambda x: x[1], reverse=True)
+            
+            # Try to assign all used models first
             gpus_assigned = 0
             models_to_assign = []
             
-            for model_name, usage_count, model_info in all_models:
+            for model_name, usage_count, model_info in used_models:
                 if gpus_assigned + model_info.gpus_required <= total_gpus:
                     models_to_assign.append((model_name, usage_count, model_info, 1))  # 1 replica
+                    gpus_assigned += model_info.gpus_required
+                else:
+                    # Can't fit this model - log error
+                    self.logger.error(f"Cannot assign model {model_name} (needs {model_info.gpus_required} GPUs, only {total_gpus - gpus_assigned} left)")
+                    
+            # If we have space left, add unused models
+            for model_name, usage_count, model_info in unused_models:
+                if gpus_assigned + model_info.gpus_required <= total_gpus:
+                    models_to_assign.append((model_name, usage_count, model_info, 1))
                     gpus_assigned += model_info.gpus_required
                     
             # Update lists with what we can actually assign
             single_gpu_models = [(n, u, 1) for n, u, i, r in models_to_assign if i.gpus_required == 1]
             multi_gpu_models = [(n, u, i) for n, u, i, r in models_to_assign if i.gpus_required > 1]
+            
+            # Log which models couldn't be assigned
+            assigned_models = set(m[0] for m in models_to_assign)
+            for model_name, usage_count, _ in all_models:
+                if model_name not in assigned_models and usage_count > 0:
+                    self.logger.error(f"WARNING: Model {model_name} is used {usage_count} times but cannot be assigned due to GPU constraints!")
             
         else:
             # We have enough GPUs for at least one instance of each model
@@ -489,6 +511,11 @@ class StaticScheduler:
 
         if gpu_id is None:
             self.logger.error(f"Cannot schedule node {node_exec.node_id} - no GPU has model {model_name}")
+            # Mark the node as failed so the request can complete (albeit with error)
+            node_exec.status = "failed"
+            node_exec.start_time = self.current_sim_time
+            node_exec.end_time = self.current_sim_time
+            # Don't schedule completion event for failed nodes
             return
 
         gpu_state = self.gpu_states[gpu_id]
@@ -579,10 +606,10 @@ class StaticScheduler:
                     node_exec.ready_time = self.current_sim_time
                     self.node_queue.append(node_exec)
 
-        # Check if request is complete
+        # Check if request is complete (either completed or failed)
         request_complete = all(
             self.executions.get(f"{request_id}_{node['id']}", None)
-            and self.executions[f"{request_id}_{node['id']}"].status == "completed"
+            and self.executions[f"{request_id}_{node['id']}"].status in ["completed", "failed"]
             for node in workflow["nodes"]
         )
 
