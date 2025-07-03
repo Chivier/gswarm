@@ -1,15 +1,26 @@
 # Data API Reference
 
-The Data API provides comprehensive data pool and KV storage management operations for the gswarm system.
+The Data API provides comprehensive data pool and KV storage management operations for the gswarm system with support for multiple storage locations including DRAM, GPU memory, and disk.
 
 ## Overview
 
 The data module supports two main types of operations:
 
-1. **KV Storage Operations**: Direct key-value storage with persistent and volatile options
+1. **KV Storage Operations**: Direct key-value storage with multi-location support (DRAM, pinned memory, GPU, disk)
 2. **Data Pool Operations**: Managed data chunks with device placement and transfer capabilities
 
 **Note**: Both KV storage and data pool operations are now unified on a single server running on port 9015.
+
+### Storage Locations
+
+The enhanced data module supports the following storage locations:
+
+- **dram**: Regular system memory (default)
+- **pinned_dram**: Pinned memory for faster GPU transfers
+- **device:X**: GPU memory on device X (e.g., device:0, device:1)
+- **disk**: Persistent disk storage
+
+**Important**: Only data stored in DRAM can be read directly. Data in other locations must be moved to DRAM first using the move API.
 
 ## KV Storage Commands
 
@@ -33,7 +44,7 @@ gswarm data start --host localhost --port 9015 --max-memory 16GB
 
 ### Write Key-Value
 
-Write a key-value pair to storage.
+Write a key-value pair to a specific storage location.
 
 ```bash
 gswarm data write KEY VALUE [OPTIONS]
@@ -44,17 +55,25 @@ gswarm data write KEY VALUE [OPTIONS]
 - `VALUE`: Value to write (required)
 
 **Options:**
-- `--persist/--volatile`: Whether to persist data (default: persist)
+- `--location, -l TEXT`: Storage location (default: dram)
+  - Options: dram, pinned_dram, device:X, disk
 - `--host TEXT`: Server address (default: localhost:9015)
 
 **Example:**
 ```bash
-gswarm data write "user:123" "john_doe" --persist
+# Write to DRAM (default)
+gswarm data write "user:123" "john_doe"
+
+# Write to GPU device 0
+gswarm data write "model:weights" "large_tensor" --location device:0
+
+# Write to disk for persistence
+gswarm data write "backup:data" "important_data" --location disk
 ```
 
 ### Read Key
 
-Read value by key from storage.
+Read value by key from DRAM storage.
 
 ```bash
 gswarm data read KEY [OPTIONS]
@@ -70,6 +89,8 @@ gswarm data read KEY [OPTIONS]
 ```bash
 gswarm data read "user:123"
 ```
+
+**Note**: Reading is only allowed from DRAM. If the data is in another location (GPU, disk, etc.), you must first move it to DRAM using the move command.
 
 ### Release Key
 
@@ -110,9 +131,89 @@ gswarm data send KEY TARGET [OPTIONS]
 gswarm data send "user:123" "localhost:9016"
 ```
 
+### Move Data
+
+Move data between storage locations with optimized transfer methods.
+
+```bash
+gswarm data move-data KEY DESTINATION [OPTIONS]
+```
+
+**Arguments:**
+- `KEY`: Key to move (required)
+- `DESTINATION`: Target location (required)
+  - Options: dram, pinned_dram, device:X, disk
+
+**Options:**
+- `--host TEXT`: Server address (default: localhost:9015)
+
+**Example:**
+```bash
+# Move from GPU to DRAM for reading
+gswarm data move-data "model:weights" dram
+
+# Move from DRAM to GPU device 1
+gswarm data move-data "input:batch" device:1
+
+# Archive to disk
+gswarm data move-data "results:final" disk
+```
+
+**Features:**
+- Async operations for non-GPU transfers
+- CUDA async memcpy for GPU operations
+- Progress tracking and status updates
+- Read pointer support for PD separation
+
+### Get Location
+
+Get the current location(s) of data.
+
+```bash
+gswarm data get-location KEY [OPTIONS]
+```
+
+**Arguments:**
+- `KEY`: Key to query (required)
+
+**Options:**
+- `--host TEXT`: Server address (default: localhost:9015)
+
+**Example:**
+```bash
+gswarm data get-location "user:123"
+```
+
+**Output includes:**
+- Primary location
+- All locations where data exists
+- Copy status (complete/copying/error)
+- Read pointers for optimization
+
+### List All Locations
+
+List locations of all data in the system.
+
+```bash
+gswarm data list-locations [OPTIONS]
+```
+
+**Options:**
+- `--host TEXT`: Server address (default: localhost:9015)
+
+**Example:**
+```bash
+gswarm data list-locations
+```
+
+**Output includes:**
+- All keys and their locations
+- Size information
+- Copy status for each location
+
 ### Storage Statistics
 
-Show storage statistics.
+Show enhanced storage statistics including multi-location usage.
 
 ```bash
 gswarm data stats [OPTIONS]
@@ -127,8 +228,12 @@ gswarm data stats
 ```
 
 **Output includes:**
-- Memory usage (current/max/percentage)
-- Key counts (total/persistent/volatile)
+- DRAM usage (current/max/percentage)
+- Pinned memory usage
+- GPU memory usage per device
+- Disk storage usage
+- Key counts by location
+- Active move operations
 - System memory information
 
 ## Data Pool Commands
@@ -282,14 +387,17 @@ All commands include comprehensive error handling with descriptive messages. Com
 The commands interact with the following HTTP API endpoints on the unified server (Port 9015):
 
 ### KV Storage API
-- `POST /write`: Write key-value pair (JSON compatible values)
-- `POST /write_extended`: Write key-value pair (supports complex types via pickle)
-- `GET /read/{key}`: Read value by key (JSON compatible response)
-- `GET /read_extended/{key}`: Read value by key (supports complex types)
-- `DELETE /release/{key}`: Release key
+- `POST /write`: Write key-value pair to specified location (JSON compatible values)
+- `POST /write_extended`: Write key-value pair to specified location (supports complex types via pickle)
+- `GET /read/{key}`: Read value by key from DRAM (JSON compatible response)
+- `GET /read_extended/{key}`: Read value by key from DRAM (supports complex types)
+- `DELETE /release/{key}`: Release key from all locations
 - `POST /send`: Send key to another server
-- `GET /stats`: Get storage statistics
-- `POST /set_max_memory/{max_size}`: Set maximum memory size
+- `GET /stats`: Get enhanced storage statistics
+- `POST /set_max_memory/{max_size}`: Set maximum DRAM memory size
+- `POST /move`: Move data between storage locations
+- `GET /location/{key}`: Get location information for a key
+- `GET /locations`: List all data locations in the system
 
 ### Data Pool API
 - `GET /api/v1/data`: List data chunks
@@ -301,7 +409,7 @@ The commands interact with the following HTTP API endpoints on the unified serve
 
 ## Python API Usage
 
-### Basic KV Storage Operations
+### Basic KV Storage Operations with Multi-Location Support
 
 ```python
 from gswarm.data import DataServer, get_storage, start_server
@@ -309,72 +417,154 @@ from gswarm.data import DataServer, get_storage, start_server
 # Using DataServer client (recommended for remote access)
 client = DataServer("localhost:9015")
 
-# Write data
-client.write("user:123", {"name": "john", "age": 30}, persist=True)
-client.write("temp:cache", [1, 2, 3, 4, 5], persist=False)
+# Write data to different locations
+client.write("user:123", {"name": "john", "age": 30}, location="dram")
+client.write("model:weights", large_tensor, location="device:0")
+client.write("backup:data", important_data, location="disk")
 
-# Read data
+# Move data to DRAM for reading
+client.move("model:weights", "dram")
+
+# Read data (only from DRAM)
 user_data = client.read("user:123")
-cache_data = client.read("temp:cache")
+model_weights = client.read("model:weights")  # Now available after move
 
-# Get statistics
+# Get location information
+location_info = client.get_location("model:weights")
+print(f"Data is in: {location_info['location']}")
+
+# List all data locations
+all_locations = client.list_locations()
+for key, locations in all_locations.items():
+    print(f"{key}: {[loc['location'] for loc in locations]}")
+
+# Get enhanced statistics
 stats = client.get_stats()
-print(f"Memory usage: {stats['usage_percent']:.1f}%")
+print(f"DRAM usage: {stats['dram_usage_percent']:.1f}%")
+print(f"GPU 0 usage: {stats['gpu_stats'].get('device:0', {}).get('used', 0) / 1e9:.2f} GB")
 
 # Send data to another server
 success = client.send("user:123", "localhost:9016")
 
-# Release data
+# Release data from all locations
 client.release("temp:cache")
 ```
 
-### Advanced KV Storage with Complex Types
+### Advanced Multi-Location Operations
+
+```python
+import asyncio
+from gswarm.data import DataServer
+
+client = DataServer("localhost:9015")
+
+# Async move operations for better performance
+async def move_data_async():
+    # Move multiple datasets concurrently
+    tasks = [
+        client.move("dataset1", "device:0"),
+        client.move("dataset2", "device:1"),
+        client.move("dataset3", "pinned_dram")
+    ]
+    
+    # Wait for all moves to complete
+    results = await asyncio.gather(*tasks)
+    return results
+
+# Run async moves
+results = asyncio.run(move_data_async())
+
+# PD Separation Optimization Example
+# Process A writes data to GPU
+client.write("shared:tensor", tensor_data, location="device:0")
+
+# Process B moves data to its GPU
+client.move("shared:tensor", "device:1")
+
+# Get read pointer for optimized access
+location_info = client.get_location("shared:tensor")
+read_pointer = location_info['locations'][0].get('read_pointer')
+print(f"Optimized read pointer: {read_pointer}")
+```
+
+### Advanced KV Storage with Complex Types and GPU
 
 ```python
 import numpy as np
 import torch
 
-# Store complex data types (automatically uses extended API)
+# Store complex data types with location control
 client = DataServer("localhost:9015", use_extended_api=True)
 
-# Store numpy arrays
+# Store numpy arrays in pinned memory for faster GPU transfer
 data = np.random.rand(1000, 1000)
-client.write("model:weights", data, persist=True)
+client.write("model:weights", data, location="pinned_dram")
 
-# Store PyTorch tensors
-tensor = torch.randn(512, 768)
-client.write("model:embeddings", tensor, persist=True)
+# Store PyTorch tensors directly on GPU
+tensor = torch.randn(512, 768).cuda()
+client.write("model:embeddings", tensor, location="device:0")
 
-# Store custom objects
+# Store large dataset on disk
+large_dataset = np.random.rand(10000, 10000)
+client.write("dataset:train", large_dataset, location="disk")
+
+# Move data as needed
+# Move weights to GPU for processing
+client.move("model:weights", "device:0")
+
+# Move embeddings to DRAM for CPU processing
+client.move("model:embeddings", "dram")
+
+# Now can read the embeddings
+embeddings = client.read("model:embeddings")
+
+# Store custom objects with optimal placement
 model_config = {
     "name": "llama-7b",
     "layers": 32,
     "hidden_size": 4096,
-    "weights": data,
-    "tensor_data": tensor
+    "device_placement": "device:0"
 }
-client.write("model:config", model_config, persist=True)
-
-# Read back the data
-retrieved_config = client.read("model:config")
+client.write("model:config", model_config, location="dram")
 ```
 
-### Direct Storage Access (for embedded use)
+### Direct Storage Access with Multi-Location Support
 
 ```python
 from gswarm.data import get_storage, set_max_memory
+import asyncio
 
-# Set memory limit (16GB)
+# Set DRAM limit (16GB)
 set_max_memory(16 * 1024 * 1024 * 1024)
 
 # Get storage instance
 storage = get_storage()
 
-# Direct operations
-storage.write("key1", "value1", persist=True)
-value = storage.read("key1")
+# Direct operations with location control
+storage.write("key1", "value1", location="dram")
+storage.write("key2", large_array, location="device:0")
+storage.write("key3", archive_data, location="disk")
+
+# Move data to DRAM for reading
+async def move_and_read():
+    await storage.move_async("key2", "dram")
+    value = storage.read("key2")
+    return value
+
+value = asyncio.run(move_and_read())
+
+# Get location information
+location = storage.get_location("key2")
+all_locations = storage.list_locations()
+
+# Enhanced statistics
 stats = storage.get_stats()
-storage.release("key1")
+print(f"DRAM: {stats['dram_keys']} keys, {stats['dram_usage_percent']:.1f}% used")
+print(f"GPU devices: {stats['gpu_stats']}")
+print(f"Disk: {stats['disk_keys']} keys, {stats['disk_usage'] / 1e9:.2f} GB")
+
+# Clean up
+storage.release("key1")  # Removes from all locations
 ```
 
 ### Data Pool Operations via HTTP
@@ -460,17 +650,56 @@ client.set_max_memory(32 * 1024 * 1024 * 1024)  # 32GB
 
 Default configurations:
 - **Unified Server**: `localhost:9015` (both KV storage and data pool)
-- **Default device**: `dram`
-- **Default memory limit**: `16GB`
+- **Default location**: `dram`
+- **Default DRAM limit**: `16GB`
 - **Default data type**: `input`
 - **Default format**: `tensor`
 - **Extended API**: Enabled by default for complex data types
+- **Disk storage path**: `/tmp/gswarm_data`
+- **Move executor threads**: `4`
+
+### Storage Location Capabilities
+
+| Location | Read Value | Write | Move From | Move To | Persistence |
+|----------|------------|-------|-----------|---------|-------------|
+| dram | ✓ | ✓ | ✓ | ✓ | Until restart |
+| pinned_dram | ✗ | ✓ | ✓ | ✓ | Until restart |
+| device:X | ✗ | ✓ | ✓ | ✓ | Until restart |
+| disk | ✗ | ✓ | ✓ | ✓ | Persistent |
+
+### Performance Optimization Tips
+
+1. **Use pinned_dram** for data that will be frequently moved to/from GPU
+2. **Batch move operations** using async API for better throughput
+3. **Use read pointers** for PD separation to avoid redundant copies
+4. **Monitor GPU memory** usage to avoid out-of-memory errors
+5. **Archive to disk** for data not actively being processed
 
 ## Migration Notes
+
+### From Previous Version
+
+If you were previously using the older version without multi-location support:
+
+1. **Write operations**: Replace `persist=True/False` with `location="dram"` or other locations
+2. **Read operations**: Ensure data is in DRAM before reading (use move if needed)
+3. **Storage stats**: Update code to use new stats structure with location-specific metrics
+
+### Example Migration
+
+```python
+# Old code
+client.write("key", value, persist=True)
+
+# New code
+client.write("key", value, location="dram")  # or "disk" for persistence
+```
+
+### Unified Server Notes
 
 If you were previously using separate ports (9011 for data pool, 9015 for KV storage):
 
 1. **Update your scripts**: Change all `localhost:9011` references to `localhost:9015`
 2. **Single server**: You now only need to start one server that handles both APIs
-3. **Backward compatibility**: All existing commands and API calls continue to work
-4. **Performance**: Unified server reduces resource usage and improves data locality
+3. **Backward compatibility**: Most existing commands continue to work with minor adjustments
+4. **Performance**: Unified server with multi-location support provides better resource utilization

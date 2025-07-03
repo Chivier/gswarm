@@ -45,18 +45,18 @@ def start(
 def write(
     key: str = typer.Argument(..., help="Key to write"),
     value: str = typer.Argument(..., help="Value to write"),
-    persist: bool = typer.Option(True, "--persist/--volatile", help="Whether to persist data"),
+    location: str = typer.Option("dram", "--location", "-l", help="Storage location (dram/pinned_dram/device:X/disk)"),
     host: str = typer.Option("localhost:9015", "--host", help="KV server address"),
 ):
-    """Write key-value pair"""
+    """Write key-value pair to specified storage location"""
     try:
         url = f"{get_kv_api_url(host)}/write"
-        data = {"key": key, "value": value, "persist": persist}
+        data = {"key": key, "value": value, "location": location}
 
         response = requests.post(url, json=data)
         response.raise_for_status()
 
-        logger.info(f"Successfully wrote key '{key}' (persist={persist})")
+        logger.info(f"Successfully wrote key '{key}' to {location}")
     except Exception as e:
         logger.error(f"Failed to write key '{key}': {e}")
 
@@ -374,3 +374,78 @@ def delete(
             logger.info(f"  {result['message']}")
     except Exception as e:
         logger.error(f"Failed to delete data chunk: {e}")
+
+
+@app.command()
+def move_data(
+    key: str = typer.Argument(..., help="Key to move"),
+    destination: str = typer.Argument(..., help="Destination location (dram/pinned_dram/device:X/disk)"),
+    host: str = typer.Option("localhost:9015", "--host", help="KV server address"),
+):
+    """Move data between storage locations"""
+    try:
+        url = f"{get_kv_api_url(host)}/move"
+        data = {"key": key, "destination": destination}
+
+        response = requests.post(url, json=data)
+        response.raise_for_status()
+
+        result = response.json()
+        logger.info(f"Successfully initiated move of key '{key}'")
+        logger.info(f"  From: {result.get('source', 'unknown')}")
+        logger.info(f"  To: {result.get('destination')}")
+        if result.get('read_pointer'):
+            logger.info(f"  Read pointer: {result['read_pointer']}")
+    except Exception as e:
+        logger.error(f"Failed to move key '{key}': {e}")
+
+
+@app.command()
+def get_location(
+    key: str = typer.Argument(..., help="Key to query"),
+    host: str = typer.Option("localhost:9015", "--host", help="KV server address"),
+):
+    """Get location of data"""
+    try:
+        url = f"{get_kv_api_url(host)}/location/{key}"
+        response = requests.get(url)
+        response.raise_for_status()
+
+        result = response.json()
+        logger.info(f"Key '{key}' location info:")
+        logger.info(f"  Primary location: {result['location']}")
+        
+        if result.get('locations'):
+            logger.info("  All locations:")
+            for loc in result['locations']:
+                status = f" ({loc['copy_status']})" if loc['copy_status'] != 'complete' else ""
+                pointer = f" [ptr: {loc['read_pointer']}]" if loc.get('read_pointer') else ""
+                logger.info(f"    - {loc['location']}: {loc['size']} bytes{status}{pointer}")
+    except Exception as e:
+        logger.error(f"Failed to get location for key '{key}': {e}")
+
+
+@app.command()
+def list_locations(
+    host: str = typer.Option("localhost:9015", "--host", help="KV server address"),
+):
+    """List locations of all data in the system"""
+    try:
+        url = f"{get_kv_api_url(host)}/locations"
+        response = requests.get(url)
+        response.raise_for_status()
+
+        result = response.json()
+        locations = result.get('locations', {})
+        
+        if locations:
+            logger.info("Data locations in the system:")
+            for key, loc_list in locations.items():
+                logger.info(f"\n  Key: {key}")
+                for loc in loc_list:
+                    status = f" ({loc['copy_status']})" if loc['copy_status'] != 'complete' else ""
+                    logger.info(f"    - {loc['location']}: {loc['size']} bytes{status}")
+        else:
+            logger.info("No data found in the system")
+    except Exception as e:
+        logger.error(f"Failed to list locations: {e}")

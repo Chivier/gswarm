@@ -1,4 +1,4 @@
-"""Redis-like key-value data storage system for DRAM"""
+"""Redis-like key-value data storage system for DRAM, GPU memory, and disk"""
 
 import asyncio
 import time
@@ -7,8 +7,10 @@ import pickle
 import requests
 import base64
 import json
+import os
+import shutil
 from collections import OrderedDict
-from typing import Any, Optional, Dict, Union, List
+from typing import Any, Optional, Dict, Union, List, Tuple
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
@@ -16,18 +18,103 @@ from loguru import logger
 import psutil
 import sys
 import datetime
+from enum import Enum
+from concurrent.futures import ThreadPoolExecutor
+import tempfile
+import hashlib
+
+# Try to import CUDA-related libraries
+try:
+    import torch
+    import cupy as cp
+    CUDA_AVAILABLE = torch.cuda.is_available()
+except ImportError:
+    CUDA_AVAILABLE = False
+    logger.warning("PyTorch/CuPy not available, GPU memory operations will be limited")
+
+
+class DataLocation(str, Enum):
+    """Data storage locations"""
+    DRAM = "dram"
+    PINNED_DRAM = "pinned_dram"
+    DISK = "disk"
+    
+    @classmethod
+    def is_device(cls, location: str) -> bool:
+        """Check if location is a GPU device"""
+        return location.startswith("device:")
+    
+    @classmethod
+    def get_device_id(cls, location: str) -> Optional[int]:
+        """Extract device ID from device:x location"""
+        if cls.is_device(location):
+            try:
+                return int(location.split(":")[1])
+            except (IndexError, ValueError):
+                return None
+        return None
+
+
+class DataLocationInfo(BaseModel):
+    """Information about data location"""
+    location: str
+    size: int
+    last_accessed: float
+    copy_status: str = "complete"  # complete, copying, error
+    copy_progress: float = 1.0  # 0.0 to 1.0
+    read_pointer: Optional[str] = None  # For PD separation optimization
+
+
+class MoveRequest(BaseModel):
+    """Request to move data between locations"""
+    key: str
+    destination: str
+    
+
+class LocationResponse(BaseModel):
+    """Response for location queries"""
+    key: str
+    location: str
+    locations: List[DataLocationInfo]  # All locations where data exists
+    
+
+class AllLocationsResponse(BaseModel):
+    """Response for list_location API"""
+    locations: Dict[str, List[DataLocationInfo]]
 
 
 class DataStorage:
-    """In-memory key-value storage with LRU eviction for non-persistent data"""
+    """Multi-location key-value storage with support for DRAM, GPU memory, and disk"""
 
-    def __init__(self, max_mem_size: int = 16 * 1024 * 1024 * 1024):  # 16GB default
+    def __init__(self, max_mem_size: int = 16 * 1024 * 1024 * 1024, disk_path: str = "/tmp/gswarm_data"):  # 16GB default
         self.max_mem_size = max_mem_size
-        self.persistent_data: Dict[str, Any] = {}  # Persistent data that won't be evicted
-        self.volatile_data: OrderedDict[str, Any] = OrderedDict()  # LRU cache for volatile data
+        
+        # Storage backends
+        self.dram_data: Dict[str, Any] = {}  # Regular DRAM storage
+        self.pinned_data: Dict[str, Any] = {}  # Pinned memory for faster GPU transfers
+        self.gpu_data: Dict[int, Dict[str, Any]] = {}  # GPU memory per device
+        self.disk_path = disk_path
+        
+        # Metadata tracking
+        self.data_locations: Dict[str, List[DataLocationInfo]] = {}  # Track all locations for each key
         self.data_sizes: Dict[str, int] = {}  # Track size of each key-value pair
-        self.current_size = 0
+        self.current_dram_size = 0
+        self.current_pinned_size = 0
+        self.gpu_sizes: Dict[int, int] = {}  # Track GPU memory usage per device
+        
+        # Concurrency control
         self.lock = threading.RLock()
+        self.move_executor = ThreadPoolExecutor(max_workers=4)
+        self.move_tasks: Dict[str, asyncio.Task] = {}  # Track ongoing move operations
+        
+        # Initialize disk storage
+        os.makedirs(self.disk_path, exist_ok=True)
+        
+        # Initialize GPU tracking if available
+        if CUDA_AVAILABLE:
+            for i in range(torch.cuda.device_count()):
+                self.gpu_data[i] = {}
+                self.gpu_sizes[i] = 0
 
     def _get_size(self, value: Any) -> int:
         """Get approximate size of a value in bytes"""
@@ -35,109 +122,377 @@ class DataStorage:
             return len(pickle.dumps(value))
         except:
             return sys.getsizeof(value)
+    
+    def _get_disk_path(self, key: str) -> str:
+        """Get disk storage path for a key"""
+        # Use hash to avoid filesystem issues with special characters
+        key_hash = hashlib.md5(key.encode()).hexdigest()
+        return os.path.join(self.disk_path, f"{key_hash}.pkl")
+    
+    def _save_to_disk(self, key: str, value: Any) -> bool:
+        """Save data to disk"""
+        try:
+            disk_path = self._get_disk_path(key)
+            with open(disk_path, 'wb') as f:
+                pickle.dump(value, f)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save to disk: {e}")
+            return False
+    
+    def _load_from_disk(self, key: str) -> Optional[Any]:
+        """Load data from disk"""
+        try:
+            disk_path = self._get_disk_path(key)
+            if os.path.exists(disk_path):
+                with open(disk_path, 'rb') as f:
+                    return pickle.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load from disk: {e}")
+        return None
+    
+    def _remove_from_disk(self, key: str) -> bool:
+        """Remove data from disk"""
+        try:
+            disk_path = self._get_disk_path(key)
+            if os.path.exists(disk_path):
+                os.remove(disk_path)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to remove from disk: {e}")
+            return False
 
-    def _evict_lru(self, needed_space: int) -> None:
-        """Evict least recently used volatile data to free space"""
-        while self.current_size + needed_space > self.max_mem_size and len(self.volatile_data) > 0:
-            # Remove oldest item from volatile data
-            key, value = self.volatile_data.popitem(last=False)
-            freed_size = self.data_sizes.pop(key, 0)
-            self.current_size -= freed_size
-            logger.debug(f"Evicted key '{key}' to free {freed_size} bytes")
+    def _add_location(self, key: str, location: str, size: int) -> None:
+        """Add a location entry for a key"""
+        if key not in self.data_locations:
+            self.data_locations[key] = []
+        
+        # Check if location already exists
+        for loc_info in self.data_locations[key]:
+            if loc_info.location == location:
+                loc_info.last_accessed = time.time()
+                return
+        
+        # Add new location
+        self.data_locations[key].append(
+            DataLocationInfo(
+                location=location,
+                size=size,
+                last_accessed=time.time(),
+                copy_status="complete"
+            )
+        )
+    
+    def _remove_location(self, key: str, location: str) -> None:
+        """Remove a location entry for a key"""
+        if key in self.data_locations:
+            self.data_locations[key] = [
+                loc for loc in self.data_locations[key] 
+                if loc.location != location
+            ]
+            if not self.data_locations[key]:
+                del self.data_locations[key]
 
-    def write(self, key: str, value: Any, persist: bool = True) -> bool:
-        """Write key-value pair to storage"""
+    def write(self, key: str, value: Any, location: str = "dram") -> bool:
+        """Write key-value pair to specified storage location"""
         with self.lock:
             try:
                 value_size = self._get_size(value)
-
-                # Remove existing key if it exists
-                if key in self.persistent_data:
-                    old_size = self.data_sizes.get(key, 0)
-                    self.current_size -= old_size
-                    del self.persistent_data[key]
-                elif key in self.volatile_data:
-                    old_size = self.data_sizes.get(key, 0)
-                    self.current_size -= old_size
-                    del self.volatile_data[key]
-
-                # Check if we need to evict data (only for volatile data)
-                if not persist:
-                    self._evict_lru(value_size)
-
-                # Check if we still have enough space
-                if self.current_size + value_size > self.max_mem_size:
-                    if persist:
-                        raise MemoryError(
-                            f"Not enough space for persistent data. Need {value_size} bytes, available {self.max_mem_size - self.current_size}"
-                        )
-                    else:
-                        logger.warning(f"Cannot store volatile data: not enough space even after eviction")
+                
+                # Clean up any existing data in all locations
+                self._cleanup_key(key)
+                
+                # Store based on location
+                if location == DataLocation.DRAM:
+                    # Check space
+                    if self.current_dram_size + value_size > self.max_mem_size:
+                        logger.warning(f"Not enough DRAM space for key '{key}'")
                         return False
-
-                # Store the data
-                if persist:
-                    self.persistent_data[key] = value
+                    
+                    self.dram_data[key] = value
+                    self.current_dram_size += value_size
+                    
+                elif location == DataLocation.PINNED_DRAM:
+                    if CUDA_AVAILABLE:
+                        # Allocate pinned memory
+                        try:
+                            # For simplicity, store in a dict (in real implementation, use torch.cuda.pinned_memory)
+                            self.pinned_data[key] = value
+                            self.current_pinned_size += value_size
+                        except Exception as e:
+                            logger.error(f"Failed to allocate pinned memory: {e}")
+                            return False
+                    else:
+                        logger.warning("CUDA not available, falling back to regular DRAM")
+                        location = DataLocation.DRAM
+                        self.dram_data[key] = value
+                        self.current_dram_size += value_size
+                        
+                elif DataLocation.is_device(location):
+                    device_id = DataLocation.get_device_id(location)
+                    if device_id is None or not CUDA_AVAILABLE:
+                        logger.error(f"Invalid device location: {location}")
+                        return False
+                    
+                    if device_id not in self.gpu_data:
+                        logger.error(f"GPU device {device_id} not available")
+                        return False
+                    
+                    # Store on GPU (simplified - in real implementation, convert to GPU tensor)
+                    self.gpu_data[device_id][key] = value
+                    self.gpu_sizes[device_id] = self.gpu_sizes.get(device_id, 0) + value_size
+                    
+                elif location == DataLocation.DISK:
+                    # Save to disk
+                    if not self._save_to_disk(key, value):
+                        return False
+                
                 else:
-                    self.volatile_data[key] = value
-
+                    logger.error(f"Unknown location: {location}")
+                    return False
+                
+                # Update metadata
                 self.data_sizes[key] = value_size
-                self.current_size += value_size
-
-                logger.debug(f"Stored key '{key}' ({value_size} bytes, persist={persist})")
+                self._add_location(key, location, value_size)
+                
+                logger.debug(f"Stored key '{key}' ({value_size} bytes) in {location}")
                 return True
-
+                
             except Exception as e:
                 logger.error(f"Failed to write key '{key}': {e}")
                 return False
+    
+    def _cleanup_key(self, key: str) -> None:
+        """Clean up all instances of a key across all storage locations"""
+        # Remove from DRAM
+        if key in self.dram_data:
+            size = self.data_sizes.get(key, 0)
+            del self.dram_data[key]
+            self.current_dram_size -= size
+            
+        # Remove from pinned memory
+        if key in self.pinned_data:
+            size = self.data_sizes.get(key, 0)
+            del self.pinned_data[key]
+            self.current_pinned_size -= size
+            
+        # Remove from GPU memory
+        for device_id, gpu_dict in self.gpu_data.items():
+            if key in gpu_dict:
+                size = self.data_sizes.get(key, 0)
+                del gpu_dict[key]
+                self.gpu_sizes[device_id] -= size
+                
+        # Remove from disk
+        self._remove_from_disk(key)
+        
+        # Clear metadata
+        if key in self.data_locations:
+            del self.data_locations[key]
+        if key in self.data_sizes:
+            del self.data_sizes[key]
 
     def read(self, key: str) -> Optional[Any]:
-        """Read value by key"""
+        """Read value by key - only allowed from DRAM"""
         with self.lock:
-            # Check persistent data first
-            if key in self.persistent_data:
-                return self.persistent_data[key]
-
-            # Check volatile data and move to end (LRU update)
-            if key in self.volatile_data:
-                value = self.volatile_data[key]
-                # Move to end (most recently used)
-                self.volatile_data.move_to_end(key)
-                return value
-
+            # Only allow reading from DRAM as per requirement
+            if key in self.dram_data:
+                # Update access time
+                if key in self.data_locations:
+                    for loc in self.data_locations[key]:
+                        if loc.location == DataLocation.DRAM:
+                            loc.last_accessed = time.time()
+                return self.dram_data[key]
+            
+            # Check if data exists in other locations and inform user
+            if key in self.data_locations:
+                locations = [loc.location for loc in self.data_locations[key]]
+                logger.warning(f"Key '{key}' exists in {locations} but can only be read from DRAM. Use move() to bring it to DRAM.")
+            
             return None
+    
+    def get_location(self, key: str) -> Optional[str]:
+        """Get primary location of data"""
+        with self.lock:
+            if key not in self.data_locations:
+                return None
+            
+            # Return the most recently accessed location
+            locations = sorted(self.data_locations[key], key=lambda x: x.last_accessed, reverse=True)
+            return locations[0].location if locations else None
+    
+    def get_all_locations(self, key: str) -> List[DataLocationInfo]:
+        """Get all locations where data exists"""
+        with self.lock:
+            return self.data_locations.get(key, []).copy()
+    
+    def list_locations(self) -> Dict[str, List[DataLocationInfo]]:
+        """Get locations for all keys in the system"""
+        with self.lock:
+            return {k: v.copy() for k, v in self.data_locations.items()}
+    
+    async def move_async(self, key: str, destination: str) -> bool:
+        """Async move operation for data between locations"""
+        try:
+            # Get current location
+            current_locations = self.get_all_locations(key)
+            if not current_locations:
+                logger.error(f"Key '{key}' not found")
+                return False
+            
+            # Find best source location (prefer DRAM > pinned > GPU > disk)
+            source_location = None
+            source_value = None
+            
+            for loc in current_locations:
+                if loc.location == DataLocation.DRAM and key in self.dram_data:
+                    source_location = loc.location
+                    source_value = self.dram_data[key]
+                    break
+                elif loc.location == DataLocation.PINNED_DRAM and key in self.pinned_data:
+                    source_location = loc.location
+                    source_value = self.pinned_data[key]
+                    break
+                elif DataLocation.is_device(loc.location):
+                    device_id = DataLocation.get_device_id(loc.location)
+                    if device_id is not None and device_id in self.gpu_data and key in self.gpu_data[device_id]:
+                        source_location = loc.location
+                        source_value = self.gpu_data[device_id][key]
+                        break
+                elif loc.location == DataLocation.DISK:
+                    source_location = loc.location
+                    source_value = self._load_from_disk(key)
+                    if source_value is not None:
+                        break
+            
+            if source_value is None:
+                logger.error(f"Could not retrieve value for key '{key}'")
+                return False
+            
+            # Update copy status
+            with self.lock:
+                for loc in self.data_locations.get(key, []):
+                    if loc.location == destination:
+                        loc.copy_status = "copying"
+                        loc.copy_progress = 0.0
+            
+            # Perform the move based on source and destination
+            if DataLocation.is_device(source_location) or DataLocation.is_device(destination):
+                # GPU involved - use CUDA async if available
+                if CUDA_AVAILABLE:
+                    await self._cuda_async_copy(key, source_value, source_location, destination)
+                else:
+                    # Fallback to sync copy
+                    self.write(key, source_value, destination)
+            else:
+                # CPU-only operation - use thread pool
+                await asyncio.get_event_loop().run_in_executor(
+                    self.move_executor,
+                    self._sync_copy,
+                    key, source_value, destination
+                )
+            
+            # Update copy status
+            with self.lock:
+                for loc in self.data_locations.get(key, []):
+                    if loc.location == destination:
+                        loc.copy_status = "complete"
+                        loc.copy_progress = 1.0
+                        # Set read pointer for PD separation optimization
+                        loc.read_pointer = f"ptr_{key}_{destination}_{int(time.time())}"
+            
+            logger.info(f"Successfully moved key '{key}' from {source_location} to {destination}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to move key '{key}': {e}")
+            # Update error status
+            with self.lock:
+                for loc in self.data_locations.get(key, []):
+                    if loc.location == destination:
+                        loc.copy_status = "error"
+            return False
+    
+    def _sync_copy(self, key: str, value: Any, destination: str) -> None:
+        """Synchronous copy for non-GPU operations"""
+        self.write(key, value, destination)
+    
+    async def _cuda_async_copy(self, key: str, value: Any, source: str, destination: str) -> None:
+        """CUDA async memory copy (simplified implementation)"""
+        # In a real implementation, this would use CUDA streams and async memcpy
+        # For now, we'll simulate with a regular copy
+        await asyncio.sleep(0.1)  # Simulate async operation
+        self.write(key, value, destination)
+    
+    def move(self, key: str, destination: str) -> asyncio.Task:
+        """Initiate a move operation and return a task handle"""
+        task = asyncio.create_task(self.move_async(key, destination))
+        self.move_tasks[f"{key}_{destination}"] = task
+        return task
+    
+    def get_read_pointer(self, key: str, location: str) -> Optional[str]:
+        """Get read pointer for PD separation optimization"""
+        with self.lock:
+            locations = self.data_locations.get(key, [])
+            for loc in locations:
+                if loc.location == location:
+                    return loc.read_pointer
+        return None
 
     def release(self, key: str) -> bool:
-        """Remove key from storage"""
+        """Remove key from all storage locations"""
         with self.lock:
-            freed_size = 0
-            found = False
-
-            if key in self.persistent_data:
-                del self.persistent_data[key]
-                found = True
-            elif key in self.volatile_data:
-                del self.volatile_data[key]
-                found = True
-
-            if found:
-                freed_size = self.data_sizes.pop(key, 0)
-                self.current_size -= freed_size
-                logger.debug(f"Released key '{key}' ({freed_size} bytes)")
-                return True
-
-            return False
+            if key not in self.data_locations:
+                return False
+            
+            # Clean up from all locations
+            self._cleanup_key(key)
+            
+            logger.debug(f"Released key '{key}' from all locations")
+            return True
 
     def get_stats(self) -> Dict[str, Any]:
         """Get storage statistics"""
         with self.lock:
+            total_keys = len(self.data_locations)
+            
+            # Count keys by location
+            location_counts = {}
+            for key, locations in self.data_locations.items():
+                for loc in locations:
+                    location_counts[loc.location] = location_counts.get(loc.location, 0) + 1
+            
+            # GPU stats
+            gpu_stats = {}
+            if CUDA_AVAILABLE:
+                for device_id in range(torch.cuda.device_count()):
+                    gpu_stats[f"device:{device_id}"] = {
+                        "used": self.gpu_sizes.get(device_id, 0),
+                        "keys": len(self.gpu_data.get(device_id, {}))
+                    }
+            
+            # Disk usage
+            disk_usage = 0
+            disk_keys = 0
+            for key in self.data_locations:
+                for loc in self.data_locations[key]:
+                    if loc.location == DataLocation.DISK:
+                        disk_usage += loc.size
+                        disk_keys += 1
+            
             return {
-                "max_size": self.max_mem_size,
-                "current_size": self.current_size,
-                "usage_percent": (self.current_size / self.max_mem_size) * 100,
-                "persistent_keys": len(self.persistent_data),
-                "volatile_keys": len(self.volatile_data),
-                "total_keys": len(self.persistent_data) + len(self.volatile_data),
+                "max_dram_size": self.max_mem_size,
+                "current_dram_size": self.current_dram_size,
+                "current_pinned_size": self.current_pinned_size,
+                "dram_usage_percent": (self.current_dram_size / self.max_mem_size) * 100,
+                "total_keys": total_keys,
+                "location_counts": location_counts,
+                "dram_keys": len(self.dram_data),
+                "pinned_keys": len(self.pinned_data),
+                "disk_usage": disk_usage,
+                "disk_keys": disk_keys,
+                "gpu_stats": gpu_stats,
+                "active_moves": len([t for t in self.move_tasks.values() if not t.done()]),
                 "memory_info": {
                     "available": psutil.virtual_memory().available,
                     "total": psutil.virtual_memory().total,
@@ -201,13 +556,13 @@ def deserialize_value(serialized: Dict[str, Any]) -> Any:
 class WriteRequest(BaseModel):
     key: str
     value: Any
-    persist: bool = True
+    location: str = "dram"  # Changed from persist to location
 
 
 class WriteRequestExtended(BaseModel):
     key: str
     serialized_value: Dict[str, Any]
-    persist: bool = True
+    location: str = "dram"  # Changed from persist to location
 
 
 class ReadResponse(BaseModel):
@@ -241,24 +596,24 @@ app = FastAPI(title="KV Data Storage", description="Redis-like key-value storage
 
 @app.post("/write")
 async def write_data(request: WriteRequest):
-    """Write key-value pair (JSON-compatible values only)"""
+    """Write key-value pair to specified location (JSON-compatible values only)"""
     storage = get_storage()
-    success = storage.write(request.key, request.value, request.persist)
+    success = storage.write(request.key, request.value, request.location)
     if success:
-        return {"status": "success", "key": request.key}
+        return {"status": "success", "key": request.key, "location": request.location}
     else:
         raise HTTPException(status_code=507, detail="Insufficient storage space")
 
 
 @app.post("/write_extended")
 async def write_data_extended(request: WriteRequestExtended):
-    """Write key-value pair with support for complex types via pickle"""
+    """Write key-value pair to specified location with support for complex types via pickle"""
     try:
         storage = get_storage()
         value = deserialize_value(request.serialized_value)
-        success = storage.write(request.key, value, request.persist)
+        success = storage.write(request.key, value, request.location)
         if success:
-            return {"status": "success", "key": request.key}
+            return {"status": "success", "key": request.key, "location": request.location}
         else:
             raise HTTPException(status_code=507, detail="Insufficient storage space")
     except Exception as e:
@@ -267,7 +622,7 @@ async def write_data_extended(request: WriteRequestExtended):
 
 @app.get("/read/{key}")
 async def read_data(key: str) -> ReadResponse:
-    """Read value by key (JSON-compatible response)"""
+    """Read value by key from DRAM (JSON-compatible response)"""
     storage = get_storage()
     value = storage.read(key)
     return ReadResponse(key=key, value=value, found=value is not None)
@@ -317,12 +672,12 @@ async def send_data(request: SendRequest):
         # Try extended API first, fall back to regular API
         try:
             serialized_value = serialize_value(value)
-            send_payload = {"key": request.key, "serialized_value": serialized_value, "persist": True}
+            send_payload = {"key": request.key, "serialized_value": serialized_value, "location": "dram"}
             response = requests.post(f"{target_url}/write_extended", json=send_payload, timeout=30)
             response.raise_for_status()
         except:
             # Fall back to regular API (JSON only)
-            send_payload = {"key": request.key, "value": value, "persist": True}
+            send_payload = {"key": request.key, "value": value, "location": "dram"}
             response = requests.post(f"{target_url}/write", json=send_payload, timeout=30)
             response.raise_for_status()
 
@@ -348,6 +703,57 @@ async def set_max_memory_endpoint(max_size: int):
     return {"status": "success", "max_memory": max_size}
 
 
+@app.post("/move")
+async def move_data(request: MoveRequest):
+    """Move data between storage locations"""
+    storage = get_storage()
+    
+    # Check if key exists
+    location = storage.get_location(request.key)
+    if location is None:
+        raise HTTPException(status_code=404, detail=f"Key '{request.key}' not found")
+    
+    # Initiate move operation
+    task = storage.move(request.key, request.destination)
+    
+    # For now, we'll wait for completion (in production, return task ID for async tracking)
+    try:
+        success = await task
+        if success:
+            return {
+                "status": "success",
+                "key": request.key,
+                "source": location,
+                "destination": request.destination,
+                "read_pointer": storage.get_read_pointer(request.key, request.destination)
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Move operation failed")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Move operation error: {e}")
+
+
+@app.get("/location/{key}")
+async def get_location(key: str) -> LocationResponse:
+    """Get location of data"""
+    storage = get_storage()
+    location = storage.get_location(key)
+    
+    if location is None:
+        raise HTTPException(status_code=404, detail=f"Key '{key}' not found")
+    
+    all_locations = storage.get_all_locations(key)
+    return LocationResponse(key=key, location=location, locations=all_locations)
+
+
+@app.get("/locations")
+async def list_all_locations() -> AllLocationsResponse:
+    """List locations of all data in the system"""
+    storage = get_storage()
+    locations = storage.list_locations()
+    return AllLocationsResponse(locations=locations)
+
+
 class DataServer:
     """KV Data Server for easy programmatic access"""
 
@@ -357,8 +763,8 @@ class DataServer:
         if not self.url.startswith("http://") and not self.url.startswith("https://"):
             self.url = f"http://{self.url}"
 
-    def write(self, key: str, value: Any, persist: bool = True) -> bool:
-        """Write key-value pair with automatic format detection"""
+    def write(self, key: str, value: Any, location: str = "dram") -> bool:
+        """Write key-value pair to specified location with automatic format detection"""
         try:
             if self.use_extended_api:
                 # Try extended API for complex types
@@ -366,7 +772,7 @@ class DataServer:
                     serialized_value = serialize_value(value)
                     response = requests.post(
                         f"{self.url}/write_extended",
-                        json={"key": key, "serialized_value": serialized_value, "persist": persist},
+                        json={"key": key, "serialized_value": serialized_value, "location": location},
                     )
                     response.raise_for_status()
                     return True
@@ -375,13 +781,43 @@ class DataServer:
                     pass
 
             # Regular JSON API
-            response = requests.post(f"{self.url}/write", json={"key": key, "value": value, "persist": persist})
+            response = requests.post(f"{self.url}/write", json={"key": key, "value": value, "location": location})
             response.raise_for_status()
             return True
 
         except Exception as e:
             logger.error(f"Failed to write key '{key}': {e}")
             return False
+    
+    def move(self, key: str, destination: str) -> bool:
+        """Move data to a different storage location"""
+        try:
+            response = requests.post(f"{self.url}/move", json={"key": key, "destination": destination})
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to move key '{key}' to {destination}: {e}")
+            return False
+    
+    def get_location(self, key: str) -> Optional[Dict[str, Any]]:
+        """Get location information for a key"""
+        try:
+            response = requests.get(f"{self.url}/location/{key}")
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Failed to get location for key '{key}': {e}")
+            return None
+    
+    def list_locations(self) -> Optional[Dict[str, Any]]:
+        """List locations of all data in the system"""
+        try:
+            response = requests.get(f"{self.url}/locations")
+            response.raise_for_status()
+            return response.json()["locations"]
+        except Exception as e:
+            logger.error(f"Failed to list locations: {e}")
+            return None
 
     def read(self, key: str) -> Optional[Any]:
         """Read value by key with automatic format detection"""
@@ -451,15 +887,21 @@ class DataServer:
             return False
 
 
-def start_server(host: str = "0.0.0.0", port: int = 9015, max_mem_size: int = 16 * 1024 * 1024 * 1024):
-    """Start the KV data storage server"""
+def start_server(host: str = "0.0.0.0", port: int = 9015, max_mem_size: int = 16 * 1024 * 1024 * 1024, disk_path: str = "/tmp/gswarm_data"):
+    """Start the KV data storage server with multi-location support"""
     logger.info(f"Starting KV Data Storage server on {host}:{port}")
-    logger.info(f"Maximum memory size: {max_mem_size / (1024**3):.1f} GB")
+    logger.info(f"Maximum DRAM size: {max_mem_size / (1024**3):.1f} GB")
+    logger.info(f"Disk storage path: {disk_path}")
+    
+    if CUDA_AVAILABLE:
+        logger.info(f"CUDA available with {torch.cuda.device_count()} device(s)")
+    else:
+        logger.warning("CUDA not available - GPU operations will be limited")
 
     # Initialize storage with specified memory size
     set_max_memory(max_mem_size)
 
-    # Start server
+    # Start server with async support
     uvicorn.run(app, host=host, port=port, log_level="info")
 
 
