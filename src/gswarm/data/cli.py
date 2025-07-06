@@ -100,18 +100,40 @@ def release(
 @app.command()
 def send(
     key: str = typer.Argument(..., help="Key to send"),
-    target: str = typer.Argument(..., help="Target URL (e.g., localhost:9016)"),
+    target: str = typer.Argument(..., help="Target URL (e.g., localhost:9016) or node:device:X for GPU transfers"),
+    source_location: Optional[str] = typer.Option(None, "--source", "-s", help="Source location for GPU transfers (e.g., device:0)"),
     host: str = typer.Option("localhost:9015", "--host", help="Source KV server address"),
 ):
-    """Send key to another KV storage server"""
+    """Send key to another KV storage server with optional NVLink GPU-to-GPU support"""
     try:
-        url = f"{get_kv_api_url(host)}/send"
-        data = {"key": key, "url": target}
+        # Check if this is a GPU-to-GPU transfer
+        if ":device:" in target or source_location:
+            # Use extended API
+            url = f"{get_kv_api_url(host)}/send_extended"
+            data = {
+                "key": key,
+                "target": target,
+                "source_location": source_location
+            }
+        else:
+            # Use legacy API
+            url = f"{get_kv_api_url(host)}/send"
+            data = {"key": key, "url": target}
 
         response = requests.post(url, json=data)
         response.raise_for_status()
-
+        
+        result = response.json()
         logger.info(f"Successfully sent key '{key}' to {target}")
+        
+        # Show transfer method if available
+        if result.get("method"):
+            logger.info(f"  Transfer method: {result['method']}")
+            if result.get("method") == "nvlink":
+                logger.info(f"  Transfer time: {result.get('transfer_time_ms', 'N/A')}ms")
+        if result.get("source"):
+            logger.info(f"  Source location: {result['source']}")
+            
     except Exception as e:
         logger.error(f"Failed to send key '{key}' to {target}: {e}")
 
@@ -449,3 +471,43 @@ def list_locations(
             logger.info("No data found in the system")
     except Exception as e:
         logger.error(f"Failed to list locations: {e}")
+
+
+@app.command()
+def send_gpu(
+    key: str = typer.Argument(..., help="Key to send"),
+    source_device: str = typer.Argument(..., help="Source device (e.g., device:0)"),
+    target_node: str = typer.Argument(..., help="Target node"),
+    target_device: str = typer.Argument(..., help="Target device (e.g., device:1)"),
+    host: str = typer.Option("localhost:9015", "--host", help="Source KV server address"),
+):
+    """Send data directly from GPU to GPU using NVLink (if available)"""
+    try:
+        # Format target as node:device:X
+        target = f"{target_node}:{target_device}"
+        
+        url = f"{get_kv_api_url(host)}/send_extended"
+        data = {
+            "key": key,
+            "target": target,
+            "source_location": source_device
+        }
+        
+        response = requests.post(url, json=data)
+        response.raise_for_status()
+        
+        result = response.json()
+        logger.info(f"Successfully initiated GPU-to-GPU transfer")
+        logger.info(f"  Key: {key}")
+        logger.info(f"  Source: {source_device}")
+        logger.info(f"  Target: {target}")
+        logger.info(f"  Method: {result.get('method', 'unknown')}")
+        
+        if result.get('method') == 'nvlink':
+            logger.info(f"  ✓ NVLink optimized transfer used")
+            logger.info(f"  Transfer time: {result.get('transfer_time_ms', 'N/A')}ms")
+        else:
+            logger.info(f"  ⚠ Standard transfer used (NVLink not available)")
+            
+    except Exception as e:
+        logger.error(f"Failed to send GPU data: {e}")

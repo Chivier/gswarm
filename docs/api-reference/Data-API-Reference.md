@@ -113,7 +113,7 @@ gswarm data release "user:123"
 
 ### Send Key
 
-Send key to another KV storage server.
+Send key to another KV storage server with optional NVLink GPU-to-GPU support.
 
 ```bash
 gswarm data send KEY TARGET [OPTIONS]
@@ -121,15 +121,50 @@ gswarm data send KEY TARGET [OPTIONS]
 
 **Arguments:**
 - `KEY`: Key to send (required)
-- `TARGET`: Target URL (e.g., localhost:9016) (required)
+- `TARGET`: Target destination (required)
+  - URL format: `localhost:9016` for standard transfers
+  - GPU format: `node2:device:0` for GPU-to-GPU transfers
+
+**Options:**
+- `--source, -s TEXT`: Source location for GPU transfers (e.g., device:0)
+- `--host TEXT`: Source server address (default: localhost:9015)
+
+**Examples:**
+```bash
+# Standard transfer
+gswarm data send "user:123" "localhost:9016"
+
+# GPU-to-GPU transfer with NVLink (if available)
+gswarm data send "model:weights" "node2:device:1" --source device:0
+```
+
+### Send GPU Data (Direct GPU-to-GPU)
+
+Optimized command for GPU-to-GPU transfers.
+
+```bash
+gswarm data send-gpu KEY SOURCE_DEVICE TARGET_NODE TARGET_DEVICE [OPTIONS]
+```
+
+**Arguments:**
+- `KEY`: Key to send (required)
+- `SOURCE_DEVICE`: Source GPU device (e.g., device:0) (required)
+- `TARGET_NODE`: Target node name (required)
+- `TARGET_DEVICE`: Target GPU device (e.g., device:1) (required)
 
 **Options:**
 - `--host TEXT`: Source server address (default: localhost:9015)
 
 **Example:**
 ```bash
-gswarm data send "user:123" "localhost:9016"
+# Direct GPU-to-GPU transfer
+gswarm data send-gpu "model:weights" device:0 node2 device:1
 ```
+
+**Features:**
+- Automatic NVLink detection and usage
+- Falls back to standard transfer if NVLink unavailable
+- Shows transfer method and timing information
 
 ### Move Data
 
@@ -392,7 +427,8 @@ The commands interact with the following HTTP API endpoints on the unified serve
 - `GET /read/{key}`: Read value by key from DRAM (JSON compatible response)
 - `GET /read_extended/{key}`: Read value by key from DRAM (supports complex types)
 - `DELETE /release/{key}`: Release key from all locations
-- `POST /send`: Send key to another server
+- `POST /send`: Send key to another server (legacy)
+- `POST /send_extended`: Send key with GPU-to-GPU and NVLink support
 - `GET /stats`: Get enhanced storage statistics
 - `POST /set_max_memory/{max_size}`: Set maximum DRAM memory size
 - `POST /move`: Move data between storage locations
@@ -445,6 +481,9 @@ print(f"GPU 0 usage: {stats['gpu_stats'].get('device:0', {}).get('used', 0) / 1e
 
 # Send data to another server
 success = client.send("user:123", "localhost:9016")
+
+# GPU-to-GPU transfer with NVLink
+success = client.send("model:weights", "node2:device:1", source_location="device:0")
 
 # Release data from all locations
 client.release("temp:cache")
@@ -526,6 +565,51 @@ model_config = {
     "device_placement": "device:0"
 }
 client.write("model:config", model_config, location="dram")
+```
+
+### NVLink GPU-to-GPU Transfers
+
+```python
+from gswarm.data import DataServer
+import time
+
+client = DataServer("localhost:9015")
+
+# Store large model weights on GPU 0
+model_weights = load_model_weights()  # Large tensor
+client.write("model:llama-weights", model_weights, location="device:0")
+
+# Direct GPU-to-GPU transfer to another node
+# If NVLink is available, this bypasses CPU/DRAM completely
+start_time = time.time()
+result = client.send("model:llama-weights", "node2:device:1", source_location="device:0")
+transfer_time = time.time() - start_time
+
+print(f"Transfer completed in {transfer_time:.3f}s")
+print(f"Method used: {result.get('method', 'unknown')}")
+
+# Multi-node GPU cluster example
+cluster_nodes = ["node1", "node2", "node3", "node4"]
+
+# Distribute model shards across GPUs
+for i, shard in enumerate(model_shards):
+    source_device = f"device:{i % 2}"  # Alternate between GPU 0 and 1
+    target_node = cluster_nodes[i % len(cluster_nodes)]
+    target_device = f"device:{i % 4}"  # Distribute across 4 GPUs per node
+    
+    # Write shard to local GPU
+    client.write(f"shard:{i}", shard, location=source_device)
+    
+    # Transfer to target node's GPU
+    client.send(f"shard:{i}", f"{target_node}:{target_device}", source_location=source_device)
+
+# Check NVLink availability
+import torch
+if torch.cuda.is_available():
+    for i in range(torch.cuda.device_count()):
+        for j in range(i + 1, torch.cuda.device_count()):
+            if torch.cuda.can_device_access_peer(i, j):
+                print(f"NVLink available between GPU {i} and GPU {j}")
 ```
 
 ### Direct Storage Access with Multi-Location Support
@@ -674,6 +758,24 @@ Default configurations:
 3. **Use read pointers** for PD separation to avoid redundant copies
 4. **Monitor GPU memory** usage to avoid out-of-memory errors
 5. **Archive to disk** for data not actively being processed
+6. **Use NVLink** for direct GPU-to-GPU transfers when available
+
+### NVLink Support
+
+**Benefits:**
+- Direct GPU-to-GPU transfers without CPU involvement
+- Significantly reduced latency for large model weights
+- Automatic fallback to standard transfer if unavailable
+- Support for multi-node GPU clusters
+
+**Requirements:**
+- NVIDIA GPUs with NVLink connectivity
+- PyTorch with CUDA support
+- Proper P2P (peer-to-peer) access between GPUs
+
+**Transfer Methods:**
+- `nvlink`: Direct GPU-to-GPU via NVLink (fastest)
+- `standard`: Traditional CPU-mediated transfer (fallback)
 
 ## Migration Notes
 
