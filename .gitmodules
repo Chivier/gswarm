@@ -1,0 +1,3 @@
+[submodule "examples/ComfyUI-Workflows-ZHO"]
+	path = examples/ComfyUI-Workflows-ZHO
+	url = https://github.com/anyin233/ComfyUI-Workflows-ZHO
