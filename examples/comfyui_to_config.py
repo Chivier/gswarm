@@ -37,6 +37,7 @@ class ComfyUIToConfigConverter:
         'UNETLoader': 'image_generation',
         'CheckpointLoaderSimple': 'image_generation',
         'FluxGuidance': 'image_generation',
+        'workflow/FLUX': 'image_generation',
         
         # VAE/Encoding models
         'VAEDecode': 'image_processing',
@@ -47,6 +48,7 @@ class ComfyUIToConfigConverter:
         'ControlNetLoader': 'control_net',
         'ControlNetApply': 'control_net',
         'ControlNetApplyAdvanced': 'control_net',
+        'BasicGuider': 'control_net',
         
         # Upscaling
         'UpscaleModelLoader': 'upscaling',
@@ -55,6 +57,22 @@ class ComfyUIToConfigConverter:
         # Video
         'VideoLinearCFGGuidance': 'video_generation',
         'HunyuanVideoSampler': 'video_generation',
+        
+        # Utility/Processing nodes
+        'EmptyLatentImage': 'utility',
+        'PreviewImage': 'utility',
+        'LoadImage': 'utility',
+        'SaveImage': 'utility',
+    }
+    
+    # Node types that should be included in workflow but don't represent models
+    PROCESSING_NODES = {
+        'EmptyLatentImage',
+        'PreviewImage', 
+        'LoadImage',
+        'SaveImage',
+        'BasicGuider',
+        'workflow/FLUX',
     }
     
     # Memory requirements by model type (GB)
@@ -66,6 +84,7 @@ class ComfyUIToConfigConverter:
         'upscaling': 6,
         'video_generation': 16,
         'llm': 14,
+        'utility': 1,  # Utility nodes typically require minimal memory
     }
     
     # Inference time estimates by model type (seconds)
@@ -77,6 +96,7 @@ class ComfyUIToConfigConverter:
         'upscaling': {'mean': 4.0, 'std': 1.0},
         'video_generation': {'mean': 15.0, 'std': 3.0},
         'llm': {'tokens_per_second': 50, 'token_mean': 512, 'token_std': 128},
+        'utility': {'mean': 0.1, 'std': 0.05},  # Utility nodes are fast
     }
 
     def __init__(self):
@@ -92,7 +112,7 @@ class ComfyUIToConfigConverter:
         """Extract model definition from a ComfyUI node."""
         node_type = node.get('type', '')
         
-        # Skip nodes that don't represent models
+        # Check if this node type should be included
         if node_type not in self.MODEL_TYPE_MAPPING:
             return None
             
@@ -109,7 +129,8 @@ class ComfyUIToConfigConverter:
             'name': model_name,
             'type': model_type,
             'memory_gb': memory_gb,
-            'gpus_required': 1,
+            'gpus_required': 1 if model_type != 'utility' else 0,  # Utility nodes don't need GPUs
+            'load_time_seconds': 0.1,  # Mock load time for all models
         }
         
         # Add type-specific configuration
@@ -127,16 +148,45 @@ class ComfyUIToConfigConverter:
             
         return model_def
 
+    def should_include_node(self, node: Dict[str, Any]) -> bool:
+        """Check if a node should be included in the workflow."""
+        node_type = node.get('type', '')
+        return node_type in self.MODEL_TYPE_MAPPING
+
     def _generate_model_name(self, node: Dict[str, Any]) -> str:
         """Generate a descriptive model name from node information."""
         node_type = node.get('type', 'unknown')
+        
+        # Handle special cases for certain node types
+        if node_type == 'EmptyLatentImage':
+            widgets = node.get('widgets_values', [])
+            if len(widgets) >= 2:
+                return f"EmptyLatentImage_{widgets[0]}x{widgets[1]}"
+            return "EmptyLatentImage"
+        
+        if node_type == 'workflow/FLUX':
+            return "FLUX_Workflow"
+        
+        if node_type == 'BasicGuider':
+            return "BasicGuider"
+        
+        if node_type == 'PreviewImage':
+            return "PreviewImage"
+        
+        if node_type == 'CLIPTextEncode':
+            # Use the actual text prompt as part of the model name
+            widgets = node.get('widgets_values', [])
+            if widgets and len(str(widgets[0])) > 0:
+                prompt = str(widgets[0])[:50]  # Truncate to 50 chars
+                return f"CLIPTextEncode_{prompt.replace(' ', '_')}"
+            return "CLIPTextEncode"
         
         # Try to extract model name from widgets_values
         widgets = node.get('widgets_values', [])
         if widgets:
             # First widget often contains model filename
             model_file = str(widgets[0])
-            if model_file and model_file != 'None':
+            if model_file and model_file != 'None' and not model_file.isdigit():
                 # Clean up filename
                 name = Path(model_file).stem
                 return name.replace('_', ' ').replace('-', ' ').title()
@@ -147,22 +197,39 @@ class ComfyUIToConfigConverter:
     def build_workflow_graph(self, workflow_data: Dict[str, Any]) -> Dict[str, Any]:
         """Build workflow graph from ComfyUI nodes and links."""
         nodes_data = workflow_data.get('nodes', [])
+        links_data = workflow_data.get('links', [])
         
         # Create workflow nodes
         workflow_nodes = []
         node_id_map = {}  # Map ComfyUI node IDs to our node IDs
         
         for i, node in enumerate(nodes_data):
+            # Check if this node should be included
+            if not self.should_include_node(node):
+                continue
+                
             node_id = f"node{i+1}"
             node_id_map[node['id']] = node_id
             
             # Extract model for this node
             model_def = self.extract_model_from_node(node)
-            if not model_def:
-                continue
-                
-            model_key = self._get_model_key(model_def['name'])
-            self.models[model_key] = model_def
+            if model_def:
+                model_key = self._get_model_key(model_def['name'])
+                self.models[model_key] = model_def
+            else:
+                # For nodes without model definitions, create a generic model
+                node_type = node.get('type', 'unknown')
+                model_key = self._get_model_key(node_type)
+                if model_key not in self.models:
+                    self.models[model_key] = {
+                        'name': node_type,
+                        'type': 'utility',
+                        'memory_gb': 1,
+                        'gpus_required': 0,
+                        'load_time_seconds': 0.1,
+                        'inference_time_mean': 0.1,
+                        'inference_time_std': 0.05
+                    }
             
             # Determine inputs and outputs based on node structure
             inputs = self._extract_node_inputs(node)
@@ -182,7 +249,7 @@ class ComfyUIToConfigConverter:
             workflow_nodes.append(workflow_node)
         
         # Build edges from node connections
-        edges = self._build_edges(nodes_data, node_id_map)
+        edges = self._build_edges(links_data, node_id_map)
         
         return {
             'nodes': workflow_nodes,
@@ -196,27 +263,70 @@ class ComfyUIToConfigConverter:
     def _extract_node_inputs(self, node: Dict[str, Any]) -> List[str]:
         """Extract input names from ComfyUI node."""
         inputs = []
+        
+        # Extract from actual node inputs structure
         for inp in node.get('inputs', []):
             if inp.get('name'):
                 inputs.append(inp['name'].lower())
         
-        # Add default inputs based on node type
-        node_type = node.get('type', '')
-        if 'TextEncode' in node_type:
-            inputs.append('text_prompt')
-        elif node_type == 'EmptyLatentImage':
-            inputs.append('image_dimensions')
-            
-        return inputs or ['input_data']
+        # Add default inputs based on node type if no inputs found
+        if not inputs:
+            node_type = node.get('type', '')
+            if node_type == 'EmptyLatentImage':
+                inputs = ['image_dimensions']
+            elif 'TextEncode' in node_type:
+                inputs = ['clip', 'text_prompt']
+            elif node_type == 'VAEDecode':
+                inputs = ['samples', 'vae']
+            elif node_type == 'BasicGuider':
+                inputs = ['model', 'conditioning']
+            elif node_type == 'PreviewImage':
+                inputs = ['images']
+            elif node_type == 'workflow/FLUX':
+                inputs = ['model', 'guider', 'latent_image']
+            else:
+                inputs = ['input_data']
+                
+        return inputs
 
     def _extract_node_outputs(self, node: Dict[str, Any]) -> List[str]:
         """Extract output names from ComfyUI node."""
         outputs = []
+        
+        # Extract from actual node outputs structure
         for out in node.get('outputs', []):
             if out.get('name'):
                 outputs.append(out['name'].lower())
+        
+        # Add default outputs based on node type if no outputs found
+        if not outputs:
+            node_type = node.get('type', '')
+            if node_type == 'EmptyLatentImage':
+                outputs = ['latent']
+            elif 'TextEncode' in node_type:
+                outputs = ['conditioning']
+            elif node_type == 'VAEDecode':
+                outputs = ['image']
+            elif node_type == 'BasicGuider':
+                outputs = ['guider']
+            elif node_type == 'PreviewImage':
+                outputs = ['output_data']
+            elif node_type == 'workflow/FLUX':
+                outputs = ['output', 'denoised_output']
+            elif 'Loader' in node_type:
+                # Extract from node type
+                if 'CLIP' in node_type:
+                    outputs = ['clip']
+                elif 'UNET' in node_type:
+                    outputs = ['model']
+                elif 'VAE' in node_type:
+                    outputs = ['vae']
+                else:
+                    outputs = ['output_data']
+            else:
+                outputs = ['output_data']
                 
-        return outputs or ['output_data']
+        return outputs
 
     def _extract_config_options(self, node: Dict[str, Any]) -> List[str]:
         """Extract configurable options from node widgets."""
@@ -235,35 +345,33 @@ class ComfyUIToConfigConverter:
             
         return config_options
 
-    def _build_edges(self, nodes_data: List[Dict], node_id_map: Dict[int, str]) -> List[Dict[str, str]]:
-        """Build workflow edges from ComfyUI node connections."""
+    def _build_edges(self, links_data: List, node_id_map: Dict[int, str]) -> List[Dict[str, str]]:
+        """Build workflow edges from ComfyUI links data."""
         edges = []
         
-        # Track connections between nodes
-        for node in nodes_data:
-            node_id = node_id_map.get(node['id'])
-            if not node_id:
-                continue
+        # Links format: [link_id, from_node_id, from_socket, to_node_id, to_socket, type]
+        for link in links_data:
+            if len(link) >= 4:
+                from_node_id = link[1]
+                to_node_id = link[3]
                 
-            for inp in node.get('inputs', []):
-                if 'link' in inp and inp['link'] is not None:
-                    # Find the source node for this link
-                    source_node_id = self._find_source_node(nodes_data, inp['link'], node_id_map)
-                    if source_node_id and source_node_id != node_id:
-                        edges.append({
-                            'from': source_node_id,
-                            'to': node_id
-                        })
+                from_node = node_id_map.get(from_node_id)
+                to_node = node_id_map.get(to_node_id)
+                
+                if from_node and to_node and from_node != to_node:
+                    edge = {'from': from_node, 'to': to_node}
+                    if edge not in edges:
+                        edges.append(edge)
         
         return edges
 
-    def _find_source_node(self, nodes_data: List[Dict], link_id: int, node_id_map: Dict[int, str]) -> Optional[str]:
-        """Find the source node for a given link ID."""
-        for node in nodes_data:
-            for out in node.get('outputs', []):
-                links = out.get('links')
-                if links and link_id in links:
-                    return node_id_map.get(node['id'])
+    def _find_source_node_from_links(self, links_data: List, link_id: int, node_id_map: Dict[int, str]) -> Optional[str]:
+        """Find the source node for a given link ID using the links array."""
+        for link in links_data:
+            if len(link) >= 6 and link[0] == link_id:
+                # Link format: [link_id, from_node_id, from_socket, to_node_id, to_socket, type]
+                source_node_id = link[1]
+                return node_id_map.get(source_node_id)
         return None
 
     def convert_workflow(self, workflow_path: str) -> Dict[str, Any]:
