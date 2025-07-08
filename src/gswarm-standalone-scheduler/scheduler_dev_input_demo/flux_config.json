@@ -1,0 +1,144 @@
+{
+  "models": {
+    "t5xxl_fp16": {
+      "name": "T5Xxl Fp16",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "ae": {
+      "name": "Ae",
+      "type": "image_processing",
+      "memory_gb": 4,
+      "gpus_required": 1,
+      "inference_time_mean": 1.0,
+      "inference_time_std": 0.3
+    },
+    "vaedecode": {
+      "name": "VAEDecode",
+      "type": "image_processing",
+      "memory_gb": 4,
+      "gpus_required": 1,
+      "inference_time_mean": 1.0,
+      "inference_time_std": 0.3
+    },
+    "flux1_schnell": {
+      "name": "Flux1 Schnell",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    },
+    "detailed_cinematic_dof_render_of_an_old_dusty_detailed_crt_monitor_on_a_wooden_desk_in_a_dim_room_with_items_around,_messy_dirty_room._on_the_screen_are_the_letters_“flux”_glowing_softly": {
+      "name": "Detailed Cinematic Dof Render Of An Old Dusty Detailed Crt Monitor On A Wooden Desk In A Dim Room With Items Around, Messy Dirty Room. On The Screen Are The Letters “Flux” Glowing Softly",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    }
+  },
+  "workflows": {
+    "flux.1_schnell_1.0": {
+      "name": "FLUX.1 SCHNELL 1.0",
+      "nodes": [
+        {
+          "id": "node2",
+          "model": "t5xxl_fp16",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "clip"
+          ]
+        },
+        {
+          "id": "node3",
+          "model": "ae",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "vae"
+          ]
+        },
+        {
+          "id": "node4",
+          "model": "vaedecode",
+          "inputs": [
+            "samples",
+            "vae"
+          ],
+          "outputs": [
+            "image"
+          ]
+        },
+        {
+          "id": "node7",
+          "model": "flux1_schnell",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "model"
+          ]
+        },
+        {
+          "id": "node9",
+          "model": "detailed_cinematic_dof_render_of_an_old_dusty_detailed_crt_monitor_on_a_wooden_desk_in_a_dim_room_with_items_around,_messy_dirty_room._on_the_screen_are_the_letters_“flux”_glowing_softly",
+          "inputs": [
+            "clip",
+            "text_prompt"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": "node8",
+          "to": "node4"
+        },
+        {
+          "from": "node3",
+          "to": "node4"
+        },
+        {
+          "from": "node7",
+          "to": "node5"
+        },
+        {
+          "from": "node9",
+          "to": "node5"
+        },
+        {
+          "from": "node4",
+          "to": "node6"
+        },
+        {
+          "from": "node7",
+          "to": "node8"
+        },
+        {
+          "from": "node5",
+          "to": "node8"
+        },
+        {
+          "from": "node1",
+          "to": "node8"
+        },
+        {
+          "from": "node2",
+          "to": "node9"
+        }
+      ]
+    }
+  }
+}
