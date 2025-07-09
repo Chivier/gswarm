@@ -1,0 +1,246 @@
+{
+  "experiments": [
+    {
+      "config": {
+        "requests": 100,
+        "gpus": 8,
+        "name": "small"
+      },
+      "results": {
+        "baseline": {
+          "p99_latency": 63.460425896390745,
+          "avg_latency": 34.728414071116234,
+          "throughput": 1.7014049188935638,
+          "gpu_utilization": 0.48,
+          "model_switches": 40,
+          "completed_requests": 100,
+          "revenue": {
+            "hourly_revenue": 61.2505770801683,
+            "hourly_gpu_cost": 16.0,
+            "hourly_sla_penalty": 327.4481937105507,
+            "hourly_switch_cost": 2.0,
+            "hourly_profit": -284.1976166303824
+          }
+        },
+        "online": {
+          "p99_latency": 16.020527690057904,
+          "avg_latency": 7.5285037611973715,
+          "throughput": 1.6671373440745882,
+          "gpu_utilization": 0.68,
+          "model_switches": 15,
+          "completed_requests": 100,
+          "revenue": {
+            "hourly_revenue": 60.016944386685175,
+            "hourly_gpu_cost": 16.0,
+            "hourly_sla_penalty": 36.13336755527034,
+            "hourly_switch_cost": 0.75,
+            "hourly_profit": 7.133576831414835
+          }
+        },
+        "offline": {
+          "p99_latency": 1.7874755683246728,
+          "avg_latency": 1.1916503788831152,
+          "throughput": 1.678344618053592,
+          "gpu_utilization": 0.82,
+          "model_switches": 10,
+          "completed_requests": 100,
+          "revenue": {
+            "hourly_revenue": 60.420406249929314,
+            "hourly_gpu_cost": 16.0,
+            "hourly_sla_penalty": 0,
+            "hourly_switch_cost": 0.5,
+            "hourly_profit": 43.920406249929314
+          }
+        },
+        "static": {
+          "p99_latency": 19.66992911212803,
+          "avg_latency": 6.83662470592564,
+          "throughput": 2.771053640769617,
+          "gpu_utilization": 0.75,
+          "model_switches": 0,
+          "completed_requests": 100,
+          "revenue": {
+            "hourly_revenue": 99.75793106770621,
+            "hourly_gpu_cost": 16.0,
+            "hourly_sla_penalty": 96.46521217972737,
+            "hourly_switch_cost": 0.0,
+            "hourly_profit": -12.707281112021164
+          }
+        }
+      }
+    },
+    {
+      "config": {
+        "requests": 200,
+        "gpus": 16,
+        "name": "medium"
+      },
+      "results": {
+        "baseline": {
+          "p99_latency": 76.25167036082767,
+          "avg_latency": 39.21170260094392,
+          "throughput": 2.988281740821103,
+          "gpu_utilization": 0.48,
+          "model_switches": 80,
+          "completed_requests": 200,
+          "revenue": {
+            "hourly_revenue": 107.57814266955971,
+            "hourly_gpu_cost": 16.0,
+            "hourly_sla_penalty": 712.723164617376,
+            "hourly_switch_cost": 4.0,
+            "hourly_profit": -625.1450219478163
+          }
+        },
+        "online": {
+          "p99_latency": 18.564239945519965,
+          "avg_latency": 7.805227390775303,
+          "throughput": 3.3486113182544655,
+          "gpu_utilization": 0.68,
+          "model_switches": 30,
+          "completed_requests": 200,
+          "revenue": {
+            "hourly_revenue": 120.55000745716076,
+            "hourly_gpu_cost": 16.0,
+            "hourly_sla_penalty": 103.24191892973458,
+            "hourly_switch_cost": 1.5,
+            "hourly_profit": -0.19191147257382113
+          }
+        },
+        "offline": {
+          "p99_latency": 0.8020149953429869,
+          "avg_latency": 0.5346766635619913,
+          "throughput": 3.7405784398295823,
+          "gpu_utilization": 0.82,
+          "model_switches": 10,
+          "completed_requests": 200,
+          "revenue": {
+            "hourly_revenue": 134.66082383386495,
+            "hourly_gpu_cost": 16.0,
+            "hourly_sla_penalty": 0,
+            "hourly_switch_cost": 0.5,
+            "hourly_profit": 118.16082383386495
+          }
+        },
+        "static": {
+          "p99_latency": 19.23218734829054,
+          "avg_latency": 6.879011114130417,
+          "throughput": 5.743388243005761,
+          "gpu_utilization": 0.75,
+          "model_switches": 0,
+          "completed_requests": 200,
+          "revenue": {
+            "hourly_revenue": 206.7619767482074,
+            "hourly_gpu_cost": 16.0,
+            "hourly_sla_penalty": 190.88653058423432,
+            "hourly_switch_cost": 0.0,
+            "hourly_profit": -0.1245538360269336
+          }
+        }
+      }
+    },
+    {
+      "config": {
+        "requests": 500,
+        "gpus": 32,
+        "name": "large"
+      },
+      "results": {
+        "baseline": {
+          "p99_latency": 87.12188489198965,
+          "avg_latency": 44.60185987698159,
+          "throughput": 6.299483472879995,
+          "gpu_utilization": 0.48,
+          "model_switches": 200,
+          "completed_requests": 500,
+          "revenue": {
+            "hourly_revenue": 226.78140502367984,
+            "hourly_gpu_cost": 16.0,
+            "hourly_sla_penalty": 1748.980941387992,
+            "hourly_switch_cost": 10.0,
+            "hourly_profit": -1548.1995363643123
+          }
+        },
+        "online": {
+          "p99_latency": 16.01217814754212,
+          "avg_latency": 7.68071584036097,
+          "throughput": 8.337830083018332,
+          "gpu_utilization": 0.68,
+          "model_switches": 75,
+          "completed_requests": 500,
+          "revenue": {
+            "hourly_revenue": 300.16188298865995,
+            "hourly_gpu_cost": 16.0,
+            "hourly_sla_penalty": 180.46267136295162,
+            "hourly_switch_cost": 3.75,
+            "hourly_profit": 99.94921162570833
+          }
+        },
+        "offline": {
+          "p99_latency": 0.4228625446305289,
+          "avg_latency": 0.2819083630870193,
+          "throughput": 7.094503966108453,
+          "gpu_utilization": 0.82,
+          "model_switches": 10,
+          "completed_requests": 500,
+          "revenue": {
+            "hourly_revenue": 255.40214277990432,
+            "hourly_gpu_cost": 16.0,
+            "hourly_sla_penalty": 0,
+            "hourly_switch_cost": 0.5,
+            "hourly_profit": 238.90214277990432
+          }
+        },
+        "static": {
+          "p99_latency": 17.83217148437668,
+          "avg_latency": 7.597743907646314,
+          "throughput": 11.652986619948798,
+          "gpu_utilization": 0.75,
+          "model_switches": 0,
+          "completed_requests": 500,
+          "revenue": {
+            "hourly_revenue": 419.5075183181567,
+            "hourly_gpu_cost": 16.0,
+            "hourly_sla_penalty": 328.56548224530945,
+            "hourly_switch_cost": 0.0,
+            "hourly_profit": 74.94203607284726
+          }
+        }
+      }
+    }
+  ],
+  "averages": {
+    "baseline": {
+      "p99_latency": 75.61132704973603,
+      "avg_latency": 39.51399218301392,
+      "throughput": 3.6630567108648875,
+      "gpu_utilization": 0.48,
+      "model_switches": 106.66666666666667,
+      "hourly_profit": -819.180724980837
+    },
+    "online": {
+      "p99_latency": 16.86564859437333,
+      "avg_latency": 7.671482330777882,
+      "throughput": 4.451192915115795,
+      "gpu_utilization": 0.68,
+      "model_switches": 40.0,
+      "hourly_profit": 35.63029232818312
+    },
+    "offline": {
+      "p99_latency": 1.0041177027660628,
+      "avg_latency": 0.6694118018440419,
+      "throughput": 4.171142341330543,
+      "gpu_utilization": 0.82,
+      "model_switches": 10.0,
+      "hourly_profit": 133.66112428789953
+    },
+    "static": {
+      "p99_latency": 18.91142931493175,
+      "avg_latency": 7.104459909234124,
+      "throughput": 6.7224761679080585,
+      "gpu_utilization": 0.75,
+      "model_switches": 0.0,
+      "hourly_profit": 20.703400374933054
+    }
+  },
+  "timestamp": "20250709_154443"
+}

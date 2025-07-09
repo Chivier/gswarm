@@ -197,3 +197,6 @@ src/gswarm-standalone-scheduler/scheduler_dev_input_demo/test_output_*
 src/gswarm-standalone-scheduler/scheduler_dev_input_demo/individual_configs/
 src/gswarm-standalone-scheduler/scheduler_dev_input_demo/demo_individual_configs/
 src/gswarm-standalone-scheduler/scheduler_dev_input_demo/test_individual_configs/
+
+# PD strategy analysis
+src/gswarm-standalone-scheduler/pd_strategy_*.json
