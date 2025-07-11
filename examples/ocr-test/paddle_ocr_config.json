@@ -1,0 +1,73 @@
+{
+  "models": {
+    "paddle_ocr_v4_detector": {
+      "name": "PaddleOCR v4 Text Detector",
+      "type": "text_detection",
+      "memory_gb": 4,
+      "gpus_required": 1,
+      "load_time_seconds": 2.0,
+      "inference_time_mean": 0.8,
+      "inference_time_std": 0.2
+    },
+    "paddle_ocr_v4_recognizer": {
+      "name": "PaddleOCR v4 Text Recognizer", 
+      "type": "text_recognition",
+      "memory_gb": 4,
+      "gpus_required": 1,
+      "load_time_seconds": 2.0,
+      "inference_time_mean": 1.2,
+      "inference_time_std": 0.3
+    }
+  },
+  "workflows": {
+    "paddle_ocr_v4_pipeline": {
+      "name": "PaddleOCR v4 Pipeline",
+      "nodes": [
+        {
+          "id": "node2", 
+          "model": "paddle_ocr_v4_detector",
+          "inputs": [
+            "input_image",
+            "limit_side_len",
+            "limit_max_len",
+            "mean", 
+            "std"
+          ],
+          "outputs": [
+            "dt_boxes",
+            "image_ref"
+          ],
+          "config_options": [
+            "limit_side_len",
+            "limit_max_len",
+            "db_thresh",
+            "db_box_thresh",
+            "db_unclip_ratio"
+          ]
+        },
+        {
+          "id": "node3",
+          "model": "paddle_ocr_v4_recognizer", 
+          "inputs": [
+            "image_ref",
+            "dt_boxes",
+            "rec_img_h"
+          ],
+          "outputs": [
+            "ocr_results"
+          ],
+          "config_options": [
+            "rec_img_h"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": "node2",
+          "to": "node3"
+        }
+      ]
+    }
+  }
+}
+
