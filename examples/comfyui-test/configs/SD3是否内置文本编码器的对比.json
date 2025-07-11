@@ -1,0 +1,314 @@
+{
+  "models": {
+    "clip_g": {
+      "name": "Clip G",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "t5xxl_fp16": {
+      "name": "T5Xxl Fp16",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "clip_l": {
+      "name": "Clip L",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "cliptextencode": {
+      "name": "CLIPTextEncode",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "vaedecode": {
+      "name": "VAEDecode",
+      "type": "image_processing",
+      "memory_gb": 4,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 1.0,
+      "inference_time_std": 0.3
+    },
+    "cliptextencode_a_serene_mountain_landscape_at_sunrise,_with_the_s": {
+      "name": "CLIPTextEncode_A_serene_mountain_landscape_at_sunrise,_with_the_s",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "sd3_medium": {
+      "name": "Sd3 Medium",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    },
+    "ksampler": {
+      "name": "KSampler",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    },
+    "sd3_medium_incl_clips": {
+      "name": "Sd3 Medium Incl Clips",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    }
+  },
+  "workflows": {
+    "sd3是否内置文本编码器的对比": {
+      "name": "SD3是否内置文本编码器的对比",
+      "nodes": [
+        {
+          "id": "node1",
+          "model": "clip_g",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "clip"
+          ]
+        },
+        {
+          "id": "node2",
+          "model": "t5xxl_fp16",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "clip"
+          ]
+        },
+        {
+          "id": "node3",
+          "model": "clip_l",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "clip"
+          ]
+        },
+        {
+          "id": "node4",
+          "model": "cliptextencode",
+          "inputs": [
+            "clip"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        },
+        {
+          "id": "node5",
+          "model": "vaedecode",
+          "inputs": [
+            "samples",
+            "vae"
+          ],
+          "outputs": [
+            "image"
+          ]
+        },
+        {
+          "id": "node6",
+          "model": "cliptextencode_a_serene_mountain_landscape_at_sunrise,_with_the_s",
+          "inputs": [
+            "clip"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        },
+        {
+          "id": "node8",
+          "model": "sd3_medium",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "model",
+            "clip",
+            "vae"
+          ]
+        },
+        {
+          "id": "node9",
+          "model": "vaedecode",
+          "inputs": [
+            "samples",
+            "vae"
+          ],
+          "outputs": [
+            "image"
+          ]
+        },
+        {
+          "id": "node10",
+          "model": "cliptextencode_a_serene_mountain_landscape_at_sunrise,_with_the_s",
+          "inputs": [
+            "clip"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        },
+        {
+          "id": "node11",
+          "model": "cliptextencode",
+          "inputs": [
+            "clip"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        },
+        {
+          "id": "node13",
+          "model": "ksampler",
+          "inputs": [
+            "model",
+            "positive",
+            "negative",
+            "latent_image"
+          ],
+          "outputs": [
+            "latent"
+          ],
+          "config_options": [
+            "steps",
+            "cfg",
+            "seed"
+          ]
+        },
+        {
+          "id": "node14",
+          "model": "ksampler",
+          "inputs": [
+            "model",
+            "positive",
+            "negative",
+            "latent_image"
+          ],
+          "outputs": [
+            "latent"
+          ],
+          "config_options": [
+            "steps",
+            "cfg",
+            "seed"
+          ]
+        },
+        {
+          "id": "node17",
+          "model": "sd3_medium_incl_clips",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "model",
+            "clip",
+            "vae"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": "node13",
+          "to": "node5"
+        },
+        {
+          "from": "node6",
+          "to": "node13"
+        },
+        {
+          "from": "node8",
+          "to": "node5"
+        },
+        {
+          "from": "node4",
+          "to": "node13"
+        },
+        {
+          "from": "node3",
+          "to": "node6"
+        },
+        {
+          "from": "node3",
+          "to": "node4"
+        },
+        {
+          "from": "node8",
+          "to": "node13"
+        },
+        {
+          "from": "node17",
+          "to": "node14"
+        },
+        {
+          "from": "node10",
+          "to": "node14"
+        },
+        {
+          "from": "node11",
+          "to": "node14"
+        },
+        {
+          "from": "node14",
+          "to": "node9"
+        },
+        {
+          "from": "node17",
+          "to": "node9"
+        },
+        {
+          "from": "node17",
+          "to": "node10"
+        },
+        {
+          "from": "node17",
+          "to": "node11"
+        }
+      ]
+    }
+  }
+}

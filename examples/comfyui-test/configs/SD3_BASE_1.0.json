@@ -1,0 +1,165 @@
+{
+  "models": {
+    "clip_g": {
+      "name": "Clip G",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "sd3_medium": {
+      "name": "Sd3 Medium",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    },
+    "vaedecode": {
+      "name": "VAEDecode",
+      "type": "image_processing",
+      "memory_gb": 4,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 1.0,
+      "inference_time_std": 0.3
+    },
+    "cliptextencode_bad_quality,_poor_quality,_doll,_disfigured,_jpg,_": {
+      "name": "CLIPTextEncode_bad_quality,_poor_quality,_doll,_disfigured,_jpg,_",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "cliptextencode_a_female_character_with_long,_flowing_hair_that_ap": {
+      "name": "CLIPTextEncode_a_female_character_with_long,_flowing_hair_that_ap",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "ksampler": {
+      "name": "KSampler",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    }
+  },
+  "workflows": {
+    "sd3_base_1.0": {
+      "name": "SD3 BASE 1.0",
+      "nodes": [
+        {
+          "id": "node1",
+          "model": "clip_g",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "clip"
+          ]
+        },
+        {
+          "id": "node2",
+          "model": "sd3_medium",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "model",
+            "clip",
+            "vae"
+          ]
+        },
+        {
+          "id": "node7",
+          "model": "vaedecode",
+          "inputs": [
+            "samples",
+            "vae"
+          ],
+          "outputs": [
+            "image"
+          ]
+        },
+        {
+          "id": "node9",
+          "model": "cliptextencode_bad_quality,_poor_quality,_doll,_disfigured,_jpg,_",
+          "inputs": [
+            "clip"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        },
+        {
+          "id": "node10",
+          "model": "cliptextencode_a_female_character_with_long,_flowing_hair_that_ap",
+          "inputs": [
+            "clip"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        },
+        {
+          "id": "node14",
+          "model": "ksampler",
+          "inputs": [
+            "model",
+            "positive",
+            "negative",
+            "latent_image",
+            "seed"
+          ],
+          "outputs": [
+            "latent"
+          ],
+          "config_options": [
+            "steps",
+            "cfg",
+            "seed"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": "node1",
+          "to": "node10"
+        },
+        {
+          "from": "node1",
+          "to": "node9"
+        },
+        {
+          "from": "node2",
+          "to": "node7"
+        },
+        {
+          "from": "node10",
+          "to": "node14"
+        },
+        {
+          "from": "node14",
+          "to": "node7"
+        }
+      ]
+    }
+  }
+}

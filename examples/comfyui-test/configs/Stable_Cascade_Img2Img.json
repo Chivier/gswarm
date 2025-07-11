@@ -1,0 +1,200 @@
+{
+  "models": {
+    "stable_cascade_stage_c": {
+      "name": "Stable Cascade Stage C",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    },
+    "cliptextencode_text,_watermark": {
+      "name": "CLIPTextEncode_text,_watermark",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "cliptextencode_an_avocado,_galaxy": {
+      "name": "CLIPTextEncode_an_avocado,_galaxy",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "stable_cascade_stage_b": {
+      "name": "Stable Cascade Stage B",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    },
+    "vaedecode": {
+      "name": "VAEDecode",
+      "type": "image_processing",
+      "memory_gb": 4,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 1.0,
+      "inference_time_std": 0.3
+    },
+    "ksampler": {
+      "name": "KSampler",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    }
+  },
+  "workflows": {
+    "stable_cascade_img2img": {
+      "name": "Stable Cascade Img2Img",
+      "nodes": [
+        {
+          "id": "node3",
+          "model": "stable_cascade_stage_c",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "model",
+            "clip",
+            "vae"
+          ]
+        },
+        {
+          "id": "node5",
+          "model": "cliptextencode_text,_watermark",
+          "inputs": [
+            "clip"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        },
+        {
+          "id": "node6",
+          "model": "cliptextencode_an_avocado,_galaxy",
+          "inputs": [
+            "clip"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        },
+        {
+          "id": "node7",
+          "model": "stable_cascade_stage_b",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "model",
+            "clip",
+            "vae"
+          ]
+        },
+        {
+          "id": "node8",
+          "model": "vaedecode",
+          "inputs": [
+            "samples",
+            "vae"
+          ],
+          "outputs": [
+            "image"
+          ]
+        },
+        {
+          "id": "node11",
+          "model": "ksampler",
+          "inputs": [
+            "model",
+            "positive",
+            "negative",
+            "latent_image"
+          ],
+          "outputs": [
+            "latent"
+          ],
+          "config_options": [
+            "steps",
+            "cfg",
+            "seed"
+          ]
+        },
+        {
+          "id": "node12",
+          "model": "ksampler",
+          "inputs": [
+            "model",
+            "positive",
+            "negative",
+            "latent_image"
+          ],
+          "outputs": [
+            "latent"
+          ],
+          "config_options": [
+            "steps",
+            "cfg",
+            "seed"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": "node12",
+          "to": "node8"
+        },
+        {
+          "from": "node5",
+          "to": "node11"
+        },
+        {
+          "from": "node3",
+          "to": "node11"
+        },
+        {
+          "from": "node3",
+          "to": "node6"
+        },
+        {
+          "from": "node3",
+          "to": "node5"
+        },
+        {
+          "from": "node7",
+          "to": "node12"
+        },
+        {
+          "from": "node7",
+          "to": "node8"
+        },
+        {
+          "from": "node5",
+          "to": "node12"
+        },
+        {
+          "from": "node6",
+          "to": "node11"
+        }
+      ]
+    }
+  }
+}

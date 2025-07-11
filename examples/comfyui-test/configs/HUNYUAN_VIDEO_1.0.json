@@ -1,0 +1,69 @@
+{
+  "models": {
+    "clip_l": {
+      "name": "Clip L",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "hunyuan_video_vae_bf16": {
+      "name": "Hunyuan Video Vae Bf16",
+      "type": "image_processing",
+      "memory_gb": 4,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 1.0,
+      "inference_time_std": 0.3
+    },
+    "hunyuan_video_t2v_720p_bf16": {
+      "name": "Hunyuan Video T2V 720P Bf16",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    }
+  },
+  "workflows": {
+    "hunyuan_video_1.0_": {
+      "name": "HUNYUAN VIDEO 1.0 ",
+      "nodes": [
+        {
+          "id": "node1",
+          "model": "clip_l",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "clip"
+          ]
+        },
+        {
+          "id": "node2",
+          "model": "hunyuan_video_vae_bf16",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "vae"
+          ]
+        },
+        {
+          "id": "node3",
+          "model": "hunyuan_video_t2v_720p_bf16",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "model"
+          ]
+        }
+      ],
+      "edges": []
+    }
+  }
+}

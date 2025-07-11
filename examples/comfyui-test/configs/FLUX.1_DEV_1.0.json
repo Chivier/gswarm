@@ -1,0 +1,79 @@
+{
+  "models": {
+    "flux_clip_text_encoder": {
+      "name": "FLUX-CLIP-Text-Encoder",
+      "type": "text_encoder",
+      "memory_gb": 12,
+      "gpus_required": 1,
+      "load_time_seconds": 1.171,
+      "inference_time_mean": 1.0869565217,
+      "inference_time_std": 0.5
+    },
+    "flux_dev_model": {
+      "name": "FLUX.1-DEV",
+      "type": "diffusion",
+      "memory_gb": 16,
+      "gpus_required": 1,
+      "load_time_seconds": 0.612,
+      "inference_time_mean": 4.0434782609,
+      "inference_time_std": 0.1
+    },
+    "flux_vae_decoder": {
+      "name": "FLUX-VAE-Decoder",
+      "type": "vae",
+      "memory_gb": 2,
+      "gpus_required": 0.612,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.1739130435,
+      "inference_time_std": 0.1
+    }
+  },
+  "workflows": {
+    "flux_image_generation": {
+      "name": "FLUX.1 DEV Image Generation Pipeline",
+      "description": "Text-to-image generation using FLUX.1 DEV model",
+      "nodes": [
+        {
+          "id": "text_encode",
+          "model": "flux_clip_text_encoder",
+          "inputs": [
+            "prompt_text"
+          ],
+          "outputs": [
+            "text_conditioning"
+          ]
+        },
+        {
+          "id": "flux_sampling",
+          "model": "flux_dev_model",
+          "inputs": [
+            "text_conditioning"
+          ],
+          "outputs": [
+            "denoised_latent"
+          ]
+        },
+        {
+          "id": "vae_decode",
+          "model": "flux_vae_decoder",
+          "inputs": [
+            "denoised_latent"
+          ],
+          "outputs": [
+            "final_image"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": "text_encode",
+          "to": "flux_sampling"
+        },
+        {
+          "from": "flux_sampling",
+          "to": "vae_decode"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,189 @@
+{
+  "models": {
+    "sdxs": {
+      "name": "Sdxs",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    },
+    "cliph": {
+      "name": "Cliph",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "vae_ft_mse_840000_ema_pruned": {
+      "name": "Vae Ft Mse 840000 Ema Pruned",
+      "type": "image_processing",
+      "memory_gb": 4,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 1.0,
+      "inference_time_std": 0.3
+    },
+    "cliptextencode_low_quality": {
+      "name": "CLIPTextEncode_low_quality",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "vaedecode": {
+      "name": "VAEDecode",
+      "type": "image_processing",
+      "memory_gb": 4,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 1.0,
+      "inference_time_std": 0.3
+    },
+    "ksampler": {
+      "name": "KSampler",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    },
+    "cliptextencode_beautiful_oil_painting_of_a_cute_cat,_high_quality": {
+      "name": "CLIPTextEncode_beautiful_oil_painting_of_a_cute_cat,_high_quality",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    }
+  },
+  "workflows": {
+    "sdxs_512_0.9": {
+      "name": "SDXS-512-0.9",
+      "nodes": [
+        {
+          "id": "node1",
+          "model": "sdxs",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "model"
+          ]
+        },
+        {
+          "id": "node2",
+          "model": "cliph",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "clip"
+          ]
+        },
+        {
+          "id": "node3",
+          "model": "vae_ft_mse_840000_ema_pruned",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "vae"
+          ]
+        },
+        {
+          "id": "node4",
+          "model": "cliptextencode_low_quality",
+          "inputs": [
+            "clip"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        },
+        {
+          "id": "node6",
+          "model": "vaedecode",
+          "inputs": [
+            "samples",
+            "vae"
+          ],
+          "outputs": [
+            "image"
+          ]
+        },
+        {
+          "id": "node7",
+          "model": "ksampler",
+          "inputs": [
+            "model",
+            "positive",
+            "negative",
+            "latent_image"
+          ],
+          "outputs": [
+            "latent"
+          ],
+          "config_options": [
+            "steps",
+            "cfg",
+            "seed"
+          ]
+        },
+        {
+          "id": "node9",
+          "model": "cliptextencode_beautiful_oil_painting_of_a_cute_cat,_high_quality",
+          "inputs": [
+            "clip"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": "node9",
+          "to": "node7"
+        },
+        {
+          "from": "node4",
+          "to": "node7"
+        },
+        {
+          "from": "node7",
+          "to": "node6"
+        },
+        {
+          "from": "node1",
+          "to": "node7"
+        },
+        {
+          "from": "node3",
+          "to": "node6"
+        },
+        {
+          "from": "node2",
+          "to": "node4"
+        },
+        {
+          "from": "node2",
+          "to": "node9"
+        }
+      ]
+    }
+  }
+}

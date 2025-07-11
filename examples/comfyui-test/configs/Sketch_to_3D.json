@@ -1,0 +1,197 @@
+{
+  "models": {
+    "control_netapply": {
+      "name": "Control NetApply",
+      "type": "control_net",
+      "memory_gb": 6,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 2.0,
+      "inference_time_std": 0.5
+    },
+    "vaedecode": {
+      "name": "VAEDecode",
+      "type": "image_processing",
+      "memory_gb": 4,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 1.0,
+      "inference_time_std": 0.3
+    },
+    "playground_v25": {
+      "name": "Playground V25",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    },
+    "controlnet_canny_sdxl_1.0": {
+      "name": "Controlnet Canny Sdxl 1.0",
+      "type": "control_net",
+      "memory_gb": 6,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 2.0,
+      "inference_time_std": 0.5
+    },
+    "cliptextencode_text,_watermark": {
+      "name": "CLIPTextEncode_text,_watermark",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "ksampler": {
+      "name": "KSampler",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    },
+    "cliptextencode_robot_toy": {
+      "name": "CLIPTextEncode_robot_toy",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    }
+  },
+  "workflows": {
+    "sketch_to_3d": {
+      "name": "Sketch to 3D",
+      "nodes": [
+        {
+          "id": "node1",
+          "model": "control_netapply",
+          "inputs": [
+            "conditioning",
+            "control_net",
+            "image"
+          ],
+          "outputs": [
+            "conditioning"
+          ]
+        },
+        {
+          "id": "node8",
+          "model": "vaedecode",
+          "inputs": [
+            "samples",
+            "vae"
+          ],
+          "outputs": [
+            "image"
+          ]
+        },
+        {
+          "id": "node9",
+          "model": "playground_v25",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "model",
+            "clip",
+            "vae"
+          ]
+        },
+        {
+          "id": "node11",
+          "model": "controlnet_canny_sdxl_1.0",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "control_net"
+          ]
+        },
+        {
+          "id": "node12",
+          "model": "cliptextencode_text,_watermark",
+          "inputs": [
+            "clip"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        },
+        {
+          "id": "node15",
+          "model": "ksampler",
+          "inputs": [
+            "model",
+            "positive",
+            "negative",
+            "latent_image"
+          ],
+          "outputs": [
+            "latent"
+          ],
+          "config_options": [
+            "steps",
+            "cfg",
+            "seed"
+          ]
+        },
+        {
+          "id": "node16",
+          "model": "cliptextencode_robot_toy",
+          "inputs": [
+            "clip"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": "node9",
+          "to": "node16"
+        },
+        {
+          "from": "node9",
+          "to": "node12"
+        },
+        {
+          "from": "node12",
+          "to": "node15"
+        },
+        {
+          "from": "node15",
+          "to": "node8"
+        },
+        {
+          "from": "node9",
+          "to": "node8"
+        },
+        {
+          "from": "node11",
+          "to": "node1"
+        },
+        {
+          "from": "node16",
+          "to": "node1"
+        },
+        {
+          "from": "node1",
+          "to": "node15"
+        }
+      ]
+    }
+  }
+}

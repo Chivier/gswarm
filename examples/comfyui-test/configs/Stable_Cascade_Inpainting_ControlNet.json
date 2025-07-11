@@ -1,0 +1,250 @@
+{
+  "models": {
+    "stable_cascade_stage_b": {
+      "name": "Stable Cascade Stage B",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    },
+    "vaedecode": {
+      "name": "VAEDecode",
+      "type": "image_processing",
+      "memory_gb": 4,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 1.0,
+      "inference_time_std": 0.3
+    },
+    "ksampler": {
+      "name": "KSampler",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    },
+    "control_netapplyadvanced": {
+      "name": "Control NetApplyAdvanced",
+      "type": "control_net",
+      "memory_gb": 6,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 2.0,
+      "inference_time_std": 0.5
+    },
+    "cliptextencode_text,_watermark": {
+      "name": "CLIPTextEncode_text,_watermark",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "stable_cascade_stage_c": {
+      "name": "Stable Cascade Stage C",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    },
+    "scinpainting": {
+      "name": "Scinpainting",
+      "type": "control_net",
+      "memory_gb": 6,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 2.0,
+      "inference_time_std": 0.5
+    },
+    "cliptextencode_avocado": {
+      "name": "CLIPTextEncode_avocado",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    }
+  },
+  "workflows": {
+    "stable_cascade_inpainting_controlnet": {
+      "name": "Stable Cascade Inpainting ControlNet",
+      "nodes": [
+        {
+          "id": "node1",
+          "model": "stable_cascade_stage_b",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "model",
+            "clip",
+            "vae"
+          ]
+        },
+        {
+          "id": "node2",
+          "model": "vaedecode",
+          "inputs": [
+            "samples",
+            "vae"
+          ],
+          "outputs": [
+            "image"
+          ]
+        },
+        {
+          "id": "node6",
+          "model": "ksampler",
+          "inputs": [
+            "model",
+            "positive",
+            "negative",
+            "latent_image"
+          ],
+          "outputs": [
+            "latent"
+          ],
+          "config_options": [
+            "steps",
+            "cfg",
+            "seed"
+          ]
+        },
+        {
+          "id": "node7",
+          "model": "ksampler",
+          "inputs": [
+            "model",
+            "positive",
+            "negative",
+            "latent_image"
+          ],
+          "outputs": [
+            "latent"
+          ],
+          "config_options": [
+            "steps",
+            "cfg",
+            "seed"
+          ]
+        },
+        {
+          "id": "node8",
+          "model": "control_netapplyadvanced",
+          "inputs": [
+            "positive",
+            "negative",
+            "control_net",
+            "image"
+          ],
+          "outputs": [
+            "positive",
+            "negative"
+          ]
+        },
+        {
+          "id": "node11",
+          "model": "cliptextencode_text,_watermark",
+          "inputs": [
+            "clip"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        },
+        {
+          "id": "node13",
+          "model": "stable_cascade_stage_c",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "model",
+            "clip",
+            "vae"
+          ]
+        },
+        {
+          "id": "node15",
+          "model": "scinpainting",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "control_net"
+          ]
+        },
+        {
+          "id": "node18",
+          "model": "cliptextencode_avocado",
+          "inputs": [
+            "clip"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": "node6",
+          "to": "node2"
+        },
+        {
+          "from": "node13",
+          "to": "node7"
+        },
+        {
+          "from": "node13",
+          "to": "node18"
+        },
+        {
+          "from": "node13",
+          "to": "node11"
+        },
+        {
+          "from": "node1",
+          "to": "node6"
+        },
+        {
+          "from": "node1",
+          "to": "node2"
+        },
+        {
+          "from": "node11",
+          "to": "node6"
+        },
+        {
+          "from": "node18",
+          "to": "node8"
+        },
+        {
+          "from": "node11",
+          "to": "node8"
+        },
+        {
+          "from": "node8",
+          "to": "node7"
+        },
+        {
+          "from": "node15",
+          "to": "node8"
+        }
+      ]
+    }
+  }
+}

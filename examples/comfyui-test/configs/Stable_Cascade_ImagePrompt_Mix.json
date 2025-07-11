@@ -1,0 +1,163 @@
+{
+  "models": {
+    "cliptextencode_text,_watermark": {
+      "name": "CLIPTextEncode_text,_watermark",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "cliptextencode_cute_cat_cartoon": {
+      "name": "CLIPTextEncode_cute_cat_cartoon",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "vaedecode": {
+      "name": "VAEDecode",
+      "type": "image_processing",
+      "memory_gb": 4,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 1.0,
+      "inference_time_std": 0.3
+    },
+    "stable_cascade_stage_b": {
+      "name": "Stable Cascade Stage B",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    },
+    "ksampler": {
+      "name": "KSampler",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    }
+  },
+  "workflows": {
+    "stable_cascade_imageprompt_mix": {
+      "name": "Stable Cascade ImagePrompt Mix",
+      "nodes": [
+        {
+          "id": "node3",
+          "model": "cliptextencode_text,_watermark",
+          "inputs": [
+            "clip"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        },
+        {
+          "id": "node4",
+          "model": "cliptextencode_cute_cat_cartoon",
+          "inputs": [
+            "clip"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        },
+        {
+          "id": "node5",
+          "model": "vaedecode",
+          "inputs": [
+            "samples",
+            "vae"
+          ],
+          "outputs": [
+            "image"
+          ]
+        },
+        {
+          "id": "node6",
+          "model": "stable_cascade_stage_b",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "model",
+            "clip",
+            "vae"
+          ]
+        },
+        {
+          "id": "node9",
+          "model": "ksampler",
+          "inputs": [
+            "model",
+            "positive",
+            "negative",
+            "latent_image"
+          ],
+          "outputs": [
+            "latent"
+          ],
+          "config_options": [
+            "steps",
+            "cfg",
+            "seed"
+          ]
+        },
+        {
+          "id": "node16",
+          "model": "ksampler",
+          "inputs": [
+            "model",
+            "positive",
+            "negative",
+            "latent_image"
+          ],
+          "outputs": [
+            "latent"
+          ],
+          "config_options": [
+            "steps",
+            "cfg",
+            "seed"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": "node16",
+          "to": "node5"
+        },
+        {
+          "from": "node3",
+          "to": "node9"
+        },
+        {
+          "from": "node6",
+          "to": "node16"
+        },
+        {
+          "from": "node6",
+          "to": "node5"
+        },
+        {
+          "from": "node3",
+          "to": "node16"
+        }
+      ]
+    }
+  }
+}

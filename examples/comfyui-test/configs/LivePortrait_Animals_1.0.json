@@ -1,0 +1,10 @@
+{
+  "models": {},
+  "workflows": {
+    "liveportrait_animals_1.0": {
+      "name": "LivePortrait Animals 1.0",
+      "nodes": [],
+      "edges": []
+    }
+  }
+}

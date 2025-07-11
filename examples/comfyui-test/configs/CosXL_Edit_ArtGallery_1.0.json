@@ -1,0 +1,111 @@
+{
+  "models": {
+    "cliptextencode_watercolor": {
+      "name": "CLIPTextEncode_watercolor",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "cosxl_edit": {
+      "name": "Cosxl Edit",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    },
+    "vaedecode": {
+      "name": "VAEDecode",
+      "type": "image_processing",
+      "memory_gb": 4,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 1.0,
+      "inference_time_std": 0.3
+    },
+    "cliptextencode_low_quality": {
+      "name": "CLIPTextEncode_low_quality",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    }
+  },
+  "workflows": {
+    "cosxl_edit_+_artgallery_1.0": {
+      "name": "CosXL Edit + ArtGallery 1.0",
+      "nodes": [
+        {
+          "id": "node2",
+          "model": "cliptextencode_watercolor",
+          "inputs": [
+            "clip",
+            "text"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        },
+        {
+          "id": "node3",
+          "model": "cosxl_edit",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "model",
+            "clip",
+            "vae"
+          ]
+        },
+        {
+          "id": "node7",
+          "model": "vaedecode",
+          "inputs": [
+            "samples",
+            "vae"
+          ],
+          "outputs": [
+            "image"
+          ]
+        },
+        {
+          "id": "node14",
+          "model": "cliptextencode_low_quality",
+          "inputs": [
+            "clip"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": "node3",
+          "to": "node7"
+        },
+        {
+          "from": "node3",
+          "to": "node14"
+        },
+        {
+          "from": "node3",
+          "to": "node2"
+        }
+      ]
+    }
+  }
+}

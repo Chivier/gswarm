@@ -1,0 +1,248 @@
+{
+  "models": {
+    "ksampler": {
+      "name": "KSampler",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    },
+    "stable_cascade_stage_b": {
+      "name": "Stable Cascade Stage B",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    },
+    "vaedecode": {
+      "name": "VAEDecode",
+      "type": "image_processing",
+      "memory_gb": 4,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 1.0,
+      "inference_time_std": 0.3
+    },
+    "stable_cascade_stage_c": {
+      "name": "Stable Cascade Stage C",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    },
+    "control_netapply": {
+      "name": "Control NetApply",
+      "type": "control_net",
+      "memory_gb": 6,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 2.0,
+      "inference_time_std": 0.5
+    },
+    "sccanny": {
+      "name": "Sccanny",
+      "type": "control_net",
+      "memory_gb": 6,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 2.0,
+      "inference_time_std": 0.5
+    },
+    "cliptextencode_text,_watermark": {
+      "name": "CLIPTextEncode_text,_watermark",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "cliptextencode_an_avocado,_galaxy": {
+      "name": "CLIPTextEncode_an_avocado,_galaxy",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    }
+  },
+  "workflows": {
+    "stable_cascade_canny_controlnet": {
+      "name": "Stable Cascade Canny ControlNet",
+      "nodes": [
+        {
+          "id": "node3",
+          "model": "ksampler",
+          "inputs": [
+            "model",
+            "positive",
+            "negative",
+            "latent_image"
+          ],
+          "outputs": [
+            "latent"
+          ],
+          "config_options": [
+            "steps",
+            "cfg",
+            "seed"
+          ]
+        },
+        {
+          "id": "node4",
+          "model": "stable_cascade_stage_b",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "model",
+            "clip",
+            "vae"
+          ]
+        },
+        {
+          "id": "node5",
+          "model": "vaedecode",
+          "inputs": [
+            "samples",
+            "vae"
+          ],
+          "outputs": [
+            "image"
+          ]
+        },
+        {
+          "id": "node7",
+          "model": "stable_cascade_stage_c",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "model",
+            "clip",
+            "vae"
+          ]
+        },
+        {
+          "id": "node10",
+          "model": "ksampler",
+          "inputs": [
+            "model",
+            "positive",
+            "negative",
+            "latent_image"
+          ],
+          "outputs": [
+            "latent"
+          ],
+          "config_options": [
+            "steps",
+            "cfg",
+            "seed"
+          ]
+        },
+        {
+          "id": "node11",
+          "model": "control_netapply",
+          "inputs": [
+            "conditioning",
+            "control_net",
+            "image"
+          ],
+          "outputs": [
+            "conditioning"
+          ]
+        },
+        {
+          "id": "node13",
+          "model": "sccanny",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "control_net"
+          ]
+        },
+        {
+          "id": "node14",
+          "model": "cliptextencode_text,_watermark",
+          "inputs": [
+            "clip"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        },
+        {
+          "id": "node16",
+          "model": "cliptextencode_an_avocado,_galaxy",
+          "inputs": [
+            "clip"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": "node3",
+          "to": "node5"
+        },
+        {
+          "from": "node14",
+          "to": "node10"
+        },
+        {
+          "from": "node7",
+          "to": "node10"
+        },
+        {
+          "from": "node7",
+          "to": "node16"
+        },
+        {
+          "from": "node7",
+          "to": "node14"
+        },
+        {
+          "from": "node4",
+          "to": "node3"
+        },
+        {
+          "from": "node4",
+          "to": "node5"
+        },
+        {
+          "from": "node14",
+          "to": "node3"
+        },
+        {
+          "from": "node13",
+          "to": "node11"
+        },
+        {
+          "from": "node16",
+          "to": "node11"
+        },
+        {
+          "from": "node11",
+          "to": "node10"
+        }
+      ]
+    }
+  }
+}

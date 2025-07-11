@@ -1,0 +1,174 @@
+{
+  "models": {
+    "sd3_medium": {
+      "name": "Sd3 Medium",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    },
+    "vaedecode": {
+      "name": "VAEDecode",
+      "type": "image_processing",
+      "memory_gb": 4,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 1.0,
+      "inference_time_std": 0.3
+    },
+    "ksampler": {
+      "name": "KSampler",
+      "type": "image_generation",
+      "memory_gb": 8,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 3.0,
+      "inference_time_std": 0.8
+    },
+    "cliptextencode": {
+      "name": "CLIPTextEncode",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "cliptextencode_highly_realistic_vintage_book_cover_with_a_texture": {
+      "name": "CLIPTextEncode_highly_realistic_vintage_book_cover_with_a_texture",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    },
+    "clip_l": {
+      "name": "Clip L",
+      "type": "embedding",
+      "memory_gb": 2,
+      "gpus_required": 1,
+      "load_time_seconds": 0.1,
+      "inference_time_mean": 0.5,
+      "inference_time_std": 0.1
+    }
+  },
+  "workflows": {
+    "sd3_medium_+_肖像大师（中文版）": {
+      "name": "SD3 Medium + 肖像大师（中文版）",
+      "nodes": [
+        {
+          "id": "node1",
+          "model": "sd3_medium",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "model",
+            "clip",
+            "vae"
+          ]
+        },
+        {
+          "id": "node4",
+          "model": "vaedecode",
+          "inputs": [
+            "samples",
+            "vae"
+          ],
+          "outputs": [
+            "image"
+          ]
+        },
+        {
+          "id": "node5",
+          "model": "ksampler",
+          "inputs": [
+            "model",
+            "positive",
+            "negative",
+            "latent_image"
+          ],
+          "outputs": [
+            "latent"
+          ],
+          "config_options": [
+            "steps",
+            "cfg",
+            "seed"
+          ]
+        },
+        {
+          "id": "node7",
+          "model": "cliptextencode",
+          "inputs": [
+            "clip",
+            "text"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        },
+        {
+          "id": "node8",
+          "model": "cliptextencode_highly_realistic_vintage_book_cover_with_a_texture",
+          "inputs": [
+            "clip",
+            "text"
+          ],
+          "outputs": [
+            "conditioning"
+          ],
+          "config_options": [
+            "prompt"
+          ]
+        },
+        {
+          "id": "node9",
+          "model": "clip_l",
+          "inputs": [
+            "input_data"
+          ],
+          "outputs": [
+            "clip"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": "node5",
+          "to": "node4"
+        },
+        {
+          "from": "node8",
+          "to": "node5"
+        },
+        {
+          "from": "node1",
+          "to": "node4"
+        },
+        {
+          "from": "node7",
+          "to": "node5"
+        },
+        {
+          "from": "node9",
+          "to": "node8"
+        },
+        {
+          "from": "node9",
+          "to": "node7"
+        },
+        {
+          "from": "node1",
+          "to": "node5"
+        }
+      ]
+    }
+  }
+}
