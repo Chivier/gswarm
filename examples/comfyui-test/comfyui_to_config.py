@@ -202,6 +202,7 @@ class ComfyUIToConfigConverter:
         # Create workflow nodes
         workflow_nodes = []
         node_id_map = {}  # Map ComfyUI node IDs to our node IDs
+        gpu_required_nodes = set()  # Track nodes that require GPU
         
         for i, node in enumerate(nodes_data):
             # Check if this node should be included
@@ -231,6 +232,11 @@ class ComfyUIToConfigConverter:
                         'inference_time_std': 0.05
                     }
             
+            # Check if this node requires GPU
+            requires_gpu = self.models[model_key].get('gpus_required', 0) > 0
+            if requires_gpu:
+                gpu_required_nodes.add(node_id)
+            
             # Determine inputs and outputs based on node structure
             inputs = self._extract_node_inputs(node)
             outputs = self._extract_node_outputs(node)
@@ -248,11 +254,24 @@ class ComfyUIToConfigConverter:
                 
             workflow_nodes.append(workflow_node)
         
-        # Build edges from node connections
-        edges = self._build_edges(links_data, node_id_map)
+        # Filter out nodes that don't require GPU
+        filtered_workflow_nodes = [node for node in workflow_nodes 
+                                 if node['id'] in gpu_required_nodes]
+        
+        # Update node_id_map to only include GPU-required nodes
+        filtered_node_id_map = {comfy_id: node_id for comfy_id, node_id in node_id_map.items() 
+                               if node_id in gpu_required_nodes}
+        
+        # Build edges from node connections, only including edges between GPU-required nodes
+        edges = self._build_edges(links_data, filtered_node_id_map)
+        
+        # Remove models that are not used by any GPU-required nodes
+        used_models = {node['model'] for node in filtered_workflow_nodes}
+        self.models = {key: model for key, model in self.models.items() 
+                      if key in used_models}
         
         return {
-            'nodes': workflow_nodes,
+            'nodes': filtered_workflow_nodes,
             'edges': edges
         }
 

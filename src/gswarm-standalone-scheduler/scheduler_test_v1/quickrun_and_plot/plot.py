@@ -55,7 +55,6 @@ def plot_online_gpu_comparison():
 
     gpu_nums = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
     metrics = [
-        "Total Time",
         "P99 Response Time",
         "Avg Response Time",
         "P99 Waiting Time",
@@ -72,7 +71,6 @@ def plot_online_gpu_comparison():
         data = read_data_from_json(file_path)
         if data:
             valid_gpu_nums.append(gpu_num)
-            data_by_metric["Total Time"].append(data["makespan"])
             data_by_metric["P99 Response Time"].append(data.get("p99_response_time", 0))
             data_by_metric["Avg Response Time"].append(data.get("avg_response_time", 0))
             data_by_metric["P99 Waiting Time"].append(data.get("p99_waiting_time", 0))
