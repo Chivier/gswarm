@@ -23,6 +23,17 @@ from gswarm.model.fastapi_models import (
 
 from gswarm.model.fastapi_client import ModelClient
 from gswarm.model.fastapi_head import app as head_app
+from gswarm.model.cost_models import (
+    CostModel,
+    LLMCostModel,
+    SDCostModel,
+    get_estimation_cost,
+    update_predictor,
+)
+
+# Custom service framework
+from gswarm.model.base_service import ModelService, BatchModelService, ServiceConfig
+from gswarm.model.service_manager import ServiceManager, get_service_manager
 
 __all__ = [
     # Enums
@@ -47,6 +58,18 @@ __all__ = [
     "ModelClient",
     # Head app
     "head_app",
+    # Cost models
+    "CostModel",
+    "LLMCostModel",
+    "SDCostModel",
+    "get_estimation_cost",
+    "update_predictor",
+    # Custom service framework
+    "ModelService",
+    "BatchModelService",
+    "ServiceConfig",
+    "ServiceManager",
+    "get_service_manager",
 ]
 
 __version__ = "0.4.0"

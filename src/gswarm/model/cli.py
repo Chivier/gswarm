@@ -685,6 +685,188 @@ def scan(
         raise typer.Exit(1)
 
 
+@app.command()
+def service_register(
+    name: str = typer.Argument(..., help="Service name"),
+    service_type: str = typer.Option(..., "--type", "-t", help="Service type (e.g., 'vllm', 'simple', or module path)"),
+    model_path: str = typer.Option(..., "--model", "-m", help="Path to model"),
+    port: Optional[int] = typer.Option(None, "--port", "-p", help="Service port (auto-assigned if not specified)"),
+    device: str = typer.Option("cpu", "--device", "-d", help="Device to use (cpu/cuda/cuda:0/etc)"),
+    max_batch_size: int = typer.Option(1, "--batch-size", help="Maximum batch size"),
+    extra_args: Optional[str] = typer.Option(None, "--args", help="Extra arguments as JSON"),
+):
+    """Register a custom model service"""
+    try:
+        from .service_manager import get_service_manager, ServiceConfig
+        
+        # Parse extra args if provided
+        extra_args_dict = {}
+        if extra_args:
+            import json
+            extra_args_dict = json.loads(extra_args)
+        
+        # Create service config
+        config = ServiceConfig(
+            name=name,
+            model_path=model_path,
+            port=port,
+            device=device,
+            max_batch_size=max_batch_size,
+            extra_args=extra_args_dict
+        )
+        
+        # Register the service
+        manager = get_service_manager()
+        service_info = manager.register_service(name, service_type, config)
+        
+        console.print(f"[green]✓[/green] Service '{name}' registered on port {service_info.config.port}")
+        
+    except Exception as e:
+        console.print(f"[red]Error registering service: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def service_start(
+    name: str = typer.Argument(..., help="Service name to start"),
+):
+    """Start a registered service"""
+    try:
+        from .service_manager import get_service_manager
+        
+        manager = get_service_manager()
+        
+        # Start the service
+        asyncio.run(manager.start_service(name))
+        
+        console.print(f"[green]✓[/green] Service '{name}' started")
+        
+    except Exception as e:
+        console.print(f"[red]Error starting service: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def service_stop(
+    name: str = typer.Argument(..., help="Service name to stop"),
+    force: bool = typer.Option(False, "--force", "-f", help="Force stop the service"),
+):
+    """Stop a running service"""
+    try:
+        from .service_manager import get_service_manager
+        
+        manager = get_service_manager()
+        
+        # Stop the service
+        stopped = asyncio.run(manager.stop_service(name, force=force))
+        
+        if stopped:
+            console.print(f"[green]✓[/green] Service '{name}' stopped")
+        else:
+            console.print(f"[yellow]![/yellow] Service '{name}' was not running")
+        
+    except Exception as e:
+        console.print(f"[red]Error stopping service: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def service_list():
+    """List all registered services"""
+    try:
+        from .service_manager import get_service_manager
+        
+        manager = get_service_manager()
+        services = manager.list_services()
+        
+        if not services:
+            console.print("No services registered")
+            return
+        
+        table = Table(title="Registered Services")
+        table.add_column("Name", style="cyan")
+        table.add_column("Type", style="green")
+        table.add_column("Status", style="yellow")
+        table.add_column("Port", style="blue")
+        table.add_column("Device", style="magenta")
+        table.add_column("PID", style="red")
+        
+        for service in services:
+            table.add_row(
+                service.name,
+                service.service_type,
+                service.status,
+                str(service.config.port) if service.config.port else "N/A",
+                service.config.device,
+                str(service.pid) if service.pid else "N/A"
+            )
+        
+        console.print(table)
+        
+    except Exception as e:
+        console.print(f"[red]Error listing services: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def service_status(
+    name: str = typer.Argument(..., help="Service name"),
+):
+    """Get detailed status of a service"""
+    try:
+        from .service_manager import get_service_manager
+        
+        manager = get_service_manager()
+        status = manager.get_service_status(name)
+        
+        console.print(f"\n[bold]Service: {name}[/bold]")
+        console.print(f"Type: {status['service_type']}")
+        console.print(f"Status: {status['status']}")
+        
+        if status['pid']:
+            console.print(f"PID: {status['pid']}")
+            if 'cpu_percent' in status:
+                console.print(f"CPU: {status['cpu_percent']:.1f}%")
+            if 'memory_info' in status:
+                mem_mb = status['memory_info']['rss'] / (1024 * 1024)
+                console.print(f"Memory: {mem_mb:.1f} MB")
+        
+        console.print(f"\nConfiguration:")
+        config = status['config']
+        console.print(f"  Model: {config['model_path']}")
+        console.print(f"  Port: {config['port']}")
+        console.print(f"  Device: {config['device']}")
+        console.print(f"  Max Batch Size: {config['max_batch_size']}")
+        
+        if config.get('extra_args'):
+            console.print(f"  Extra Args: {config['extra_args']}")
+        
+        if status.get('error_message'):
+            console.print(f"\n[red]Error: {status['error_message']}[/red]")
+        
+    except Exception as e:
+        console.print(f"[red]Error getting service status: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def service_unregister(
+    name: str = typer.Argument(..., help="Service name to unregister"),
+):
+    """Unregister a service (must be stopped first)"""
+    try:
+        from .service_manager import get_service_manager
+        
+        manager = get_service_manager()
+        manager.unregister_service(name)
+        
+        console.print(f"[green]✓[/green] Service '{name}' unregistered")
+        
+    except Exception as e:
+        console.print(f"[red]Error unregistering service: {e}[/red]")
+        raise typer.Exit(1)
+
+
 def main():
     """Main entry point"""
     app()
