@@ -32,6 +32,15 @@ from .connection_info import (
     get_connection_info,
     clear_connection_info,
 )
+from .device import (
+    DeviceInfo,
+    parse_device,
+    format_device,
+    normalize_device,
+    is_same_device,
+    get_device_key,
+    convert_legacy_device,
+)
 
 __all__ = [
     # Cache functions
@@ -61,4 +70,12 @@ __all__ = [
     "save_connection",
     "get_connection_info",
     "clear_connection_info",
+    # Device utilities
+    "DeviceInfo",
+    "parse_device",
+    "format_device",
+    "normalize_device",
+    "is_same_device",
+    "get_device_key",
+    "convert_legacy_device",
 ]

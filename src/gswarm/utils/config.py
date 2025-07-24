@@ -5,7 +5,7 @@ Simplified configuration management for gswarm.
 import yaml
 from pathlib import Path
 from typing import Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from loguru import logger
 
 # Global variable to store custom config path
@@ -34,15 +34,27 @@ class ClientConfig:
 
 
 @dataclass
+class PredictorRetrainLimitConfig:
+    """Configuration for predictor retraining limits."""
+    policy: str = "unlimited"  # unlimited, interval, max-try
+    interval_requests: int = 1000
+    max_tries: int = 10
+
+@dataclass
+class PredictorConfig:
+    """Configuration for the performance predictor."""
+    update_strategy: str = "continuous"  # continuous, incremental
+    continuous_update_trigger: int = 50
+    retrain_limit: PredictorRetrainLimitConfig = field(default_factory=PredictorRetrainLimitConfig)
+
+
+@dataclass
 class GSwarmConfig:
     """Combined gswarm configuration"""
 
-    host: HostConfig
-    client: ClientConfig
-
-    def __init__(self, host: Optional[HostConfig] = None, client: Optional[ClientConfig] = None):
-        self.host = host or HostConfig()
-        self.client = client or ClientConfig()
+    host: HostConfig = field(default_factory=HostConfig)
+    client: ClientConfig = field(default_factory=ClientConfig)
+    predictor: PredictorConfig = field(default_factory=PredictorConfig)
 
 
 def set_config_path(config_path: Optional[str]) -> None:
@@ -91,7 +103,21 @@ def load_config() -> GSwarmConfig:
                 node_id=client_data.get("node_id", "node1"),
             )
 
-            config = GSwarmConfig(host=host_config, client=client_config)
+            # Load predictor config
+            predictor_data = data.get("predictor", {})
+            retrain_limit_data = predictor_data.get("retrain_limit", {})
+            retrain_limit_config = PredictorRetrainLimitConfig(
+                policy=retrain_limit_data.get("policy", "unlimited"),
+                interval_requests=retrain_limit_data.get("interval_requests", 1000),
+                max_tries=retrain_limit_data.get("max_tries", 10),
+            )
+            predictor_config = PredictorConfig(
+                update_strategy=predictor_data.get("update_strategy", "continuous"),
+                continuous_update_trigger=predictor_data.get("continuous_update_trigger", 50),
+                retrain_limit=retrain_limit_config,
+            )
+
+            config = GSwarmConfig(host=host_config, client=client_config, predictor=predictor_config)
             logger.info(f"Configuration loaded from {config_path}")
             return config
 
@@ -127,6 +153,15 @@ def save_config(config: GSwarmConfig) -> bool:
                 "model_cache_dir": config.client.model_cache_dir,
                 "node_id": config.client.node_id,
             },
+            "predictor": {
+                "update_strategy": config.predictor.update_strategy,
+                "continuous_update_trigger": config.predictor.continuous_update_trigger,
+                "retrain_limit": {
+                    "policy": config.predictor.retrain_limit.policy,
+                    "interval_requests": config.predictor.retrain_limit.interval_requests,
+                    "max_tries": config.predictor.retrain_limit.max_tries,
+                }
+            }
         }
 
         with open(config_path, "w") as f:
