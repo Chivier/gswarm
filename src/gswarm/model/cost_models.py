@@ -577,9 +577,24 @@ class CostModel:
             )
 
 
-# Global instances (kept for backward compatibility)
-sd_cost_model = SDCostModel()
-llm_cost_model = LLMCostModel()
+# Global instances removed - use CostModel class instead for lazy initialization
+# For backward compatibility, create functions that return instances
+def get_sd_cost_model():
+    """Get SD cost model instance (lazy initialization)."""
+    if not hasattr(get_sd_cost_model, '_instance'):
+        get_sd_cost_model._instance = SDCostModel()
+    return get_sd_cost_model._instance
+
+def get_llm_cost_model():
+    """Get LLM cost model instance (lazy initialization)."""
+    if not hasattr(get_llm_cost_model, '_instance'):
+        get_llm_cost_model._instance = LLMCostModel()
+    return get_llm_cost_model._instance
+
+# Deprecated: Direct access to global instances
+# Use get_sd_cost_model() or get_llm_cost_model() instead
+sd_cost_model = None
+llm_cost_model = None
 
 # Global unified model
 cost_model = CostModel()

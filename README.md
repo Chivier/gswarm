@@ -42,6 +42,7 @@ The system uses a host-client architecture where a central host node coordinates
 - Dependency management and resource conflict detection
 - Parallel execution of independent tasks
 - Automatic retry with exponential backoff
+- Per-GPU task queues with customizable sorting
 
 ## Installation
 
@@ -239,6 +240,12 @@ gswarm queue status
 gswarm queue tasks [--status STATUS]
 gswarm queue cancel <task_id>
 gswarm queue history [--limit N]
+
+# Direct queue operations (for scheduler development)
+python -m gswarm.queue.cli add <device_id> --model <model_name> --input <json_input>
+python -m gswarm.queue.cli remove <device_id> <task_uuid>
+python -m gswarm.queue.cli list <device_id>
+python -m gswarm.queue.cli get <device_id> <task_uuid>
 ```
 
 ## API Reference

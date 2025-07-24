@@ -304,8 +304,8 @@ def read(
                     node_data = {"node_id": node_status.node_id, "gpus": []}
 
                     for gpu in node_status.gpus:
-                        # Use a simple fallback for GPU name since we can't access head node state from CLI
-                        gpu_name = f"GPU_{gpu.gpu_id}"
+                        # Use device_type from protobuf if available, otherwise fallback
+                        gpu_name = gpu.device_type if gpu.device_type else f"GPU_{gpu.gpu_id}"
 
                         gpu_data = {
                             "gpu_id": gpu.gpu_id,
@@ -321,7 +321,7 @@ def read(
                         # Add row to table
                         table.add_row(
                             node_status.node_id,
-                            gpu_name,  # Use the fallback name
+                            gpu_name,  # Use the actual device name
                             str(gpu.gpu_id),
                             f"{gpu.utilization:.1f}%" if gpu.utilization >= 0 else "N/A",
                             f"{gpu.memory_used:.0f} MB" if gpu.memory_used >= 0 else "N/A",

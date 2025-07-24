@@ -6,12 +6,16 @@ This directory contains a comprehensive test suite for the GSwarm distributed GP
 
 ```
 src/test/
-├── deployment/     # Infrastructure deployment scripts
-├── unit/          # Unit tests for individual components
-├── integration/   # Integration tests for component interactions
 ├── api/           # REST API endpoint tests
+├── deployment/    # Infrastructure deployment scripts
+├── gsmodel_data/  # Test data for gsmodel
+├── gsmodel_test/  # Test configurations for gsmodel
+├── integration/   # Integration tests for component interactions
 ├── performance/   # Performance and stress tests
-└── ...           # Other test resources
+├── scripts/       # Test automation scripts
+│   ├── llm/      # LLM-specific test scripts
+│   └── run_all_tests.sh
+└── unit/         # Unit tests for individual components
 ```
 
 ## Quick Start
@@ -96,7 +100,7 @@ The test suite validates the new device notation format throughout:
 
 ```bash
 # From src/test directory
-./run_all_tests.sh  # (script to be created)
+./scripts/run_all_tests.sh
 
 # Or manually:
 cd unit && python -m unittest discover && cd ..

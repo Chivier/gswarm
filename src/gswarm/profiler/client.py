@@ -119,7 +119,7 @@ async def collect_gpu_metrics(enable_bandwidth: bool, extra_metrics: list[str]) 
         try:
             gpu_metric = {
                 "physical_idx": i,
-                "name": device.name(),
+                "gpu_name": device.name(),  # Changed from "name" to "gpu_name" to match server expectation
                 "gpu_util": 0.0,
                 "mem_util": 0.0,
                 "mem_used_mb": 0,
@@ -141,13 +141,18 @@ async def collect_gpu_metrics(enable_bandwidth: bool, extra_metrics: list[str]) 
             except (AttributeError, NotImplementedError):
                 logger.debug(f"Memory utilization not available for device {i}")
 
-            # Get actual memory values from nvitop
+            # Get actual memory values from nvitop using direct methods
             try:
-                memory_info = device.memory()
-                if memory_info is not None:
-                    gpu_metric["mem_used_mb"] = memory_info.used // (1024 * 1024)  # Convert to MB
-                    gpu_metric["mem_total_mb"] = memory_info.total // (1024 * 1024)  # Convert to MB
+                # Use memory_total() and memory_used() methods as per nvitop docs
+                mem_total = device.memory_total()  # Returns bytes
+                mem_used = device.memory_used()    # Returns bytes
+                
+                if mem_total > 0:
+                    gpu_metric["mem_total_mb"] = mem_total // (1024 * 1024)  # Convert to MB
+                    gpu_metric["mem_used_mb"] = mem_used // (1024 * 1024)   # Convert to MB
+                    logger.debug(f"GPU {i} memory: {gpu_metric['mem_total_mb']} MB total, {gpu_metric['mem_used_mb']} MB used")
                 else:
+                    logger.debug(f"GPU {i} memory_total() returned 0")
                     # Fallback calculation using percentage if direct memory access fails
                     if gpu_metric["mem_util"] > 0:
                         # Try to get from torch as fallback
@@ -158,9 +163,12 @@ async def collect_gpu_metrics(enable_bandwidth: bool, extra_metrics: list[str]) 
                                 props = torch.cuda.get_device_properties(i)
                                 gpu_metric["mem_total_mb"] = props.total_memory // (1024 * 1024)
                                 gpu_metric["mem_used_mb"] = int(gpu_metric["mem_total_mb"] * gpu_metric["mem_util"])
+                                logger.debug(f"GPU {i} memory from torch fallback: {gpu_metric['mem_total_mb']} MB")
                         except ImportError:
+                            logger.debug("Torch not available for memory fallback")
                             pass
-            except (AttributeError, NotImplementedError):
+            except (AttributeError, NotImplementedError) as e:
+                logger.debug(f"GPU {i} nvitop memory access failed: {e}")
                 # Final fallback to torch if available
                 try:
                     import torch
@@ -173,6 +181,7 @@ async def collect_gpu_metrics(enable_bandwidth: bool, extra_metrics: list[str]) 
                             gpu_metric["mem_used_mb"] = torch.cuda.memory_allocated(i) // (1024 * 1024)
                         except:
                             gpu_metric["mem_used_mb"] = int(gpu_metric["mem_total_mb"] * gpu_metric["mem_util"])
+                        logger.debug(f"GPU {i} memory from final torch fallback: {gpu_metric['mem_total_mb']} MB")
                 except ImportError:
                     logger.debug(f"Neither nvitop memory info nor torch available for device {i}")
 
@@ -234,7 +243,7 @@ def dict_to_grpc_metrics_update(hostname: str, payload: Dict[str, Any]) -> profi
         gpu_metrics.append(
             profiler_pb2.GPUMetric(
                 physical_idx=gpu["physical_idx"],
-                name=gpu["name"],
+                name=gpu.get("gpu_name", gpu.get("name", f"GPU_{gpu['physical_idx']}")),
                 gpu_util=gpu["gpu_util"],
                 mem_util=gpu["mem_util"],
                 dram_bw_gbps_rx=gpu.get("dram_bw_gbps_rx", 0.0),
@@ -242,6 +251,8 @@ def dict_to_grpc_metrics_update(hostname: str, payload: Dict[str, Any]) -> profi
                 nvlink_bw_gbps_rx=gpu.get("nvlink_bw_gbps_rx", 0.0),
                 nvlink_bw_gbps_tx=gpu.get("nvlink_bw_gbps_tx", 0.0),
                 extra_metrics=extra_data_struct,  # Use Struct for extra metrics
+                mem_used_mb=gpu.get("mem_used_mb", 0.0),
+                mem_total_mb=gpu.get("mem_total_mb", 0.0),
             )
         )
 

@@ -200,3 +200,24 @@ src/gswarm-standalone-scheduler/scheduler_dev_input_demo/test_individual_configs
 
 # PD strategy analysis
 src/gswarm-standalone-scheduler/pd_strategy_*.json
+
+# Debug and temporary files
+*.debug
+*.tmp
+*.temp
+*.out
+*.prof
+*.profile
+core.*
+*~
+*.swp
+*.swo
+
+# Test outputs
+src/gswarm-standalone-scheduler/scheduler_test_v1/*.json
+src/gswarm-standalone-scheduler/scheduler_test_v2/*.json
+src/test/deployment/output.json
+src/test/outputs/
+
+# Scripts
+scripts

@@ -1,196 +1,139 @@
-"""Task queue CLI commands"""
+"""
+CLI for GSwarm Task Queue Manager
+"""
 
-import typer
-from typing import Optional
-from loguru import logger
-import requests
+import argparse
+import sys
 from datetime import datetime
+from typing import List
+import json
 
-app = typer.Typer(help="Task queue management operations")
-
-
-def get_api_url(host: str = "localhost:9015") -> str:
-    """Ensure host has http:// prefix"""
-    if not host.startswith("http://") and not host.startswith("https://"):
-        return f"http://{host}"
-    return host
+from gswarm.queue.manager import TaskQueueManager, Task
 
 
-@app.command()
-def status(
-    host: str = typer.Option("localhost:9015", "--host", help="Client API address"),
-):
-    """Get queue status"""
-    try:
-        url = f"{get_api_url(host)}/api/v1/queue"
-        response = requests.get(url)
-        response.raise_for_status()
-
-        data = response.json()
-        logger.info("Queue Status:")
-        logger.info(f"  Pending tasks: {data.get('pending', 0)}")
-        logger.info(f"  Running tasks: {data.get('running', 0)}")
-        logger.info(f"  Completed tasks: {data.get('completed', 0)}")
-
-        if data.get("config"):
-            config = data["config"]
-            logger.info("\nQueue Configuration:")
-            logger.info(f"  Max concurrent tasks: {config.get('max_concurrent_tasks', 'N/A')}")
-            logger.info(f"  Priority levels: {', '.join(config.get('priority_levels', []))}")
-            logger.info(f"  Resource tracking: {'enabled' if config.get('resource_tracking') else 'disabled'}")
-    except Exception as e:
-        logger.error(f"Failed to get queue status: {e}")
+def create_sample_task() -> Task:
+    """Create a sample task for testing."""
+    return Task(
+        uuid=None,  # Will be auto-generated
+        datetime=datetime.now(),
+        model_name="sample_model",
+        input={"data": "sample input"},
+        tag="sample_tag",
+        dependencies=set(),
+        timeout=30.0,
+        others={"priority": 1}
+    )
 
 
-@app.command()
-def tasks(
-    status: Optional[str] = typer.Option(None, "--status", "-s", help="Filter by status"),
-    limit: int = typer.Option(20, "--limit", "-l", help="Number of tasks to show"),
-    host: str = typer.Option("localhost:9015", "--host", help="Client API address"),
-):
-    """List tasks in the queue"""
-    try:
-        url = f"{get_api_url(host)}/api/v1/queue/tasks"
-        params = {"limit": limit}
-        if status:
-            params["status"] = status
-
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-
-        tasks = response.json().get("tasks", [])
-
-        if tasks:
-            logger.info(f"Found {len(tasks)} task(s):")
-            for task in tasks:
-                logger.info(f"\n  Task ID: {task['task_id']}")
-                logger.info(f"    Type: {task['task_type']}")
-                logger.info(f"    Status: {task['status']}")
-                logger.info(f"    Priority: {task['priority']}")
-
-                if task.get("created_at"):
-                    created = datetime.fromtimestamp(task["created_at"])
-                    logger.info(f"    Created: {created.strftime('%Y-%m-%d %H:%M:%S')}")
-
-                if task.get("started_at"):
-                    started = datetime.fromtimestamp(task["started_at"])
-                    logger.info(f"    Started: {started.strftime('%Y-%m-%d %H:%M:%S')}")
-
-                if task.get("completed_at"):
-                    completed = datetime.fromtimestamp(task["completed_at"])
-                    duration = task["completed_at"] - task.get("started_at", task["created_at"])
-                    logger.info(f"    Completed: {completed.strftime('%Y-%m-%d %H:%M:%S')} (took {duration:.1f}s)")
-
-                if task.get("dependencies"):
-                    logger.info(f"    Dependencies: {', '.join(task['dependencies'])}")
-
-                if task.get("resources"):
-                    res = task["resources"]
-                    if res.get("devices"):
-                        logger.info(f"    Devices: {', '.join(res['devices'])}")
-                    if res.get("models"):
-                        logger.info(f"    Models: {', '.join(res['models'])}")
+def main():
+    parser = argparse.ArgumentParser(description="GSwarm Task Queue Manager CLI")
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+    
+    # Add task command
+    add_parser = subparsers.add_parser('add', help='Add a task to a queue')
+    add_parser.add_argument('device_id', help='Device ID')
+    add_parser.add_argument('--model', required=True, help='Model name')
+    add_parser.add_argument('--input', required=True, help='Input data (JSON)')
+    add_parser.add_argument('--tag', default='', help='Task tag')
+    add_parser.add_argument('--deps', nargs='*', default=[], help='Dependencies')
+    add_parser.add_argument('--timeout', type=float, default=30.0, help='Timeout in seconds')
+    add_parser.add_argument('--others', default='{}', help='Other parameters (JSON)')
+    
+    # Remove task command
+    remove_parser = subparsers.add_parser('remove', help='Remove a task from a queue')
+    remove_parser.add_argument('device_id', help='Device ID')
+    remove_parser.add_argument('task_uuid', help='Task UUID')
+    
+    # List tasks command
+    list_parser = subparsers.add_parser('list', help='List tasks in a queue')
+    list_parser.add_argument('device_id', help='Device ID')
+    
+    # Get task command
+    get_parser = subparsers.add_parser('get', help='Get a specific task')
+    get_parser.add_argument('device_id', help='Device ID')
+    get_parser.add_argument('task_uuid', help='Task UUID')
+    
+    # Queue size command
+    size_parser = subparsers.add_parser('size', help='Get queue size')
+    size_parser.add_argument('device_id', help='Device ID')
+    
+    # List devices command
+    subparsers.add_parser('devices', help='List all devices with queues')
+    
+    args = parser.parse_args()
+    
+    if not args.command:
+        parser.print_help()
+        return
+    
+    manager = TaskQueueManager()
+    
+    if args.command == 'add':
+        try:
+            input_data = json.loads(args.input)
+            others_data = json.loads(args.others)
+        except json.JSONDecodeError as e:
+            print(f"Error parsing JSON: {e}")
+            return 1
+            
+        task = Task(
+            uuid=None,
+            datetime=datetime.now(),
+            model_name=args.model,
+            input=input_data,
+            tag=args.tag,
+            dependencies=set(args.deps),
+            timeout=args.timeout,
+            others=others_data
+        )
+        
+        manager.add_task(args.device_id, task)
+        print(f"Added task {task.uuid} to device {args.device_id}")
+        
+    elif args.command == 'remove':
+        task = manager.remove_task(args.device_id, args.task_uuid)
+        if task:
+            print(f"Removed task {task.uuid} from device {args.device_id}")
         else:
-            logger.info("No tasks found")
-    except Exception as e:
-        logger.error(f"Failed to list tasks: {e}")
-
-
-@app.command()
-def cancel(
-    task_id: str = typer.Argument(..., help="Task ID to cancel"),
-    host: str = typer.Option("localhost:9015", "--host", help="Client API address"),
-):
-    """Cancel a pending or running task"""
-    try:
-        url = f"{get_api_url(host)}/api/v1/queue/tasks/{task_id}/cancel"
-        response = requests.post(url)
-        response.raise_for_status()
-
-        result = response.json()
-        if result.get("success"):
-            logger.info(f"Task '{task_id}' cancelled successfully")
-            if result.get("message"):
-                logger.info(f"  {result['message']}")
-        else:
-            logger.error(f"Failed to cancel task: {result.get('message', 'Unknown error')}")
-    except requests.HTTPError as e:
-        if e.response.status_code == 404:
-            logger.error(f"Task '{task_id}' not found")
-        else:
-            logger.error(f"Failed to cancel task: {e}")
-    except Exception as e:
-        logger.error(f"Failed to cancel task: {e}")
-
-
-@app.command()
-def history(
-    limit: int = typer.Option(50, "--limit", "-l", help="Number of records to show"),
-    since: Optional[str] = typer.Option(None, "--since", help="Show tasks since timestamp"),
-    host: str = typer.Option("localhost:9015", "--host", help="Client API address"),
-):
-    """Get task execution history"""
-    try:
-        url = f"{get_api_url(host)}/api/v1/queue/history"
-        params = {"limit": limit}
-        if since:
-            params["since"] = since
-
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-
-        history = response.json().get("history", [])
-
-        if history:
-            logger.info(f"Task History ({len(history)} records):")
-
-            # Group by status
-            by_status = {}
-            for task in history:
-                status = task.get("status", "unknown")
-                if status not in by_status:
-                    by_status[status] = []
-                by_status[status].append(task)
-
-            for status, tasks in by_status.items():
-                logger.info(f"\n  {status.upper()} ({len(tasks)} tasks):")
-                for task in tasks[:5]:  # Show first 5 of each status
-                    logger.info(f"    - {task['task_id']} ({task['task_type']})")
-                    if task.get("completed_at") and task.get("started_at"):
-                        duration = task["completed_at"] - task["started_at"]
-                        logger.info(f"      Duration: {duration:.1f}s")
-
-                if len(tasks) > 5:
-                    logger.info(f"    ... and {len(tasks) - 5} more")
-        else:
-            logger.info("No task history found")
-    except Exception as e:
-        logger.error(f"Failed to get task history: {e}")
-
-
-@app.command()
-def clear(
-    status: Optional[str] = typer.Option(None, "--status", "-s", help="Clear only tasks with this status"),
-    force: bool = typer.Option(False, "--force", "-f", help="Force clear without confirmation"),
-    host: str = typer.Option("localhost:9015", "--host", help="Client API address"),
-):
-    """Clear completed or failed tasks from history"""
-    if not force:
-        confirm = typer.confirm(f"Clear {'all' if not status else status} tasks from history?")
-        if not confirm:
-            logger.info("Operation cancelled")
+            print(f"Task {args.task_uuid} not found in device {args.device_id}")
+            
+    elif args.command == 'list':
+        tasks = manager.get_all_tasks(args.device_id)
+        if not tasks:
+            print(f"No tasks in queue for device {args.device_id}")
             return
+            
+        print(f"Tasks in queue for device {args.device_id}:")
+        for task in tasks:
+            print(f"  {task.uuid}: {task.model_name} ({task.tag})")
+            
+    elif args.command == 'get':
+        task = manager.get_task(args.device_id, args.task_uuid)
+        if task:
+            print(f"Task {task.uuid}:")
+            print(f"  Model: {task.model_name}")
+            print(f"  Input: {task.input}")
+            print(f"  Tag: {task.tag}")
+            print(f"  Dependencies: {list(task.dependencies)}")
+            print(f"  Timeout: {task.timeout}")
+            print(f"  Others: {task.others}")
+        else:
+            print(f"Task {args.task_uuid} not found in device {args.device_id}")
+            
+    elif args.command == 'size':
+        size = manager.get_queue_size(args.device_id)
+        print(f"Queue size for device {args.device_id}: {size}")
+        
+    elif args.command == 'devices':
+        devices = manager.get_all_device_ids()
+        if not devices:
+            print("No devices with queues")
+            return
+            
+        print("Devices with queues:")
+        for device in devices:
+            print(f"  {device}")
 
-    try:
-        url = f"{get_api_url(host)}/api/v1/queue/clear"
-        data = {}
-        if status:
-            data["status"] = status
 
-        response = requests.post(url, json=data)
-        response.raise_for_status()
-
-        result = response.json()
-        logger.info(f"Cleared {result.get('cleared', 0)} tasks from history")
-    except Exception as e:
-        logger.error(f"Failed to clear task history: {e}")
+if __name__ == "__main__":
+    sys.exit(main())

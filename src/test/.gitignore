@@ -1,0 +1,23 @@
+# Test output files
+*.log
+*.json
+*.pdf
+
+# Temporary outputs
+outputs/
+deployment/output.json
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Coverage reports
+.coverage
+htmlcov/
+*.cover
+
+# IDE
+.vscode/
+.idea/

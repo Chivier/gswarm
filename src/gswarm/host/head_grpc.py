@@ -148,6 +148,8 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
                             "nvlink_bw_gbps_rx": gpu_metric.nvlink_bw_gbps_rx,
                             "nvlink_bw_gbps_tx": gpu_metric.nvlink_bw_gbps_tx,
                             "extra_metrics": MessageToDict(gpu_metric.extra_metrics),  # Use Struct for extra metrics
+                            "mem_used_mb": gpu_metric.mem_used_mb,
+                            "mem_total_mb": gpu_metric.mem_total_mb,
                         }
                     )
 
@@ -280,23 +282,25 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
                         client_data = state.latest_client_data[client_id]
 
                         for gpu_metric in client_data.get("gpus_metrics", []):
+                            # Debug logging
+                            gpu_name = gpu_metric.get("gpu_name", f"GPU_{gpu_metric['physical_idx']}")
+                            logger.debug(f"GPU {gpu_metric['physical_idx']}: gpu_name='{gpu_metric.get('gpu_name', 'NOT_FOUND')}', using '{gpu_name}'")
+                            
                             gpu_status = profiler_pb2.GPUStatus(
                                 gpu_id=gpu_metric["physical_idx"],
-                                gpu_name=gpu_metric.get("name", f"GPU_{gpu_metric['physical_idx']}"),
                                 utilization=gpu_metric["gpu_util"],
-                                memory_used=gpu_metric.get(
+                                memory_used=int(gpu_metric.get(
                                     "mem_used_mb",
-                                    int(gpu_metric.get("mem_util", 0) * gpu_metric.get("mem_total_mb", 16384)),
-                                ),
-                                memory_total=gpu_metric.get(
-                                    "mem_total_mb", 16384
-                                ),  # Use actual value or fallback to 16GB
+                                    gpu_metric.get("mem_util", 0) * gpu_metric.get("mem_total_mb", 16384)
+                                )),
+                                memory_total=int(gpu_metric.get("mem_total_mb", 0)) or 16384,  # Use actual value or fallback to 16GB if 0
                                 dram_bandwidth=gpu_metric.get("dram_bw_gbps_rx", 0)
                                 + gpu_metric.get("dram_bw_gbps_tx", 0),
                                 nvlink_bandwidth=gpu_metric.get("nvlink_bw_gbps_rx", 0)
                                 + gpu_metric.get("nvlink_bw_gbps_tx", 0),
                                 temperature=-1,  # Not available in current metrics
                                 power=-1,  # Not available in current metrics
+                                device_type=gpu_name
                             )
                             gpus.append(gpu_status)
 
@@ -338,17 +342,17 @@ class ProfilerServicer(profiler_pb2_grpc.ProfilerServiceServicer):
                 for gpu_metric in client_data.get("gpus_metrics", []):
                     gpu_status = profiler_pb2.GPUStatus(
                         gpu_id=gpu_metric["physical_idx"],
-                        gpu_name=gpu_metric.get("name", f"GPU_{gpu_metric['physical_idx']}"),
                         utilization=gpu_metric["gpu_util"],
-                        memory_used=gpu_metric.get(
-                            "mem_used_mb", int(gpu_metric.get("mem_util", 0) * gpu_metric.get("mem_total_mb", 16384))
-                        ),
-                        memory_total=gpu_metric.get("mem_total_mb", 16384),  # Use actual value or fallback to 16GB
+                        memory_used=int(gpu_metric.get(
+                            "mem_used_mb", gpu_metric.get("mem_util", 0) * gpu_metric.get("mem_total_mb", 16384)
+                        )),
+                        memory_total=int(gpu_metric.get("mem_total_mb", 0)) or 16384,  # Use actual value or fallback to 16GB if 0
                         dram_bandwidth=gpu_metric.get("dram_bw_gbps_rx", 0) + gpu_metric.get("dram_bw_gbps_tx", 0),
                         nvlink_bandwidth=gpu_metric.get("nvlink_bw_gbps_rx", 0)
                         + gpu_metric.get("nvlink_bw_gbps_tx", 0),
                         temperature=-1,
                         power=-1,
+                        device_type=gpu_metric.get("gpu_name", f"GPU_{gpu_metric['physical_idx']}")
                     )
                     gpus.append(gpu_status)
 

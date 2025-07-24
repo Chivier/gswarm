@@ -25,6 +25,8 @@ message GPUMetric {
     double nvlink_bw_gbps_rx = 7;
     double nvlink_bw_gbps_tx = 8;
     google.protobuf.Struct extra_metrics = 9; // Store any user defined data here
+    double mem_used_mb = 10;
+    double mem_total_mb = 11;
 }
 
 message P2PLink {
@@ -109,6 +111,7 @@ message GPUStatus {
     double nvlink_bandwidth = 6;
     double temperature = 7;
     double power = 8;
+    string device_type = 9;  // GPU device name e.g., "NVIDIA RTX 4090"
 }
 
 message ClusterStatusResponse {

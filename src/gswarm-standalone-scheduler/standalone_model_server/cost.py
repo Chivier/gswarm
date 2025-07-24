@@ -2,8 +2,21 @@ from llm_cost_model import LLMCostModel
 from sd_cost_model import SDCostModel
 import random
 
-sd_cost_model = SDCostModel()
-llm_cost_model = LLMCostModel()
+# Lazy initialization to avoid loading models at import time
+_sd_cost_model = None
+_llm_cost_model = None
+
+def get_sd_cost_model():
+    global _sd_cost_model
+    if _sd_cost_model is None:
+        _sd_cost_model = SDCostModel()
+    return _sd_cost_model
+
+def get_llm_cost_model():
+    global _llm_cost_model
+    if _llm_cost_model is None:
+        _llm_cost_model = LLMCostModel()
+    return _llm_cost_model
 
 
 def get_estimation_cost(model_type: str, model_name: str, device: str, data_features) -> float:
@@ -20,14 +33,14 @@ def get_estimation_cost(model_type: str, model_name: str, device: str, data_feat
     for current_feature in data_features:
         if model_type == "llm":
             if "prompt_length" in current_feature:
-                result.append(llm_cost_model.predict(current_feature["prompt_length"]))
+                result.append(get_llm_cost_model().predict(current_feature["prompt_length"]))
             elif "prompt" in current_feature:
-                result.append(llm_cost_model.predict_str(current_feature["prompt"]))
+                result.append(get_llm_cost_model().predict_str(current_feature["prompt"]))
             else:
                 raise ValueError("Invalid data features for LLM model prediction.")
         elif model_type == "diffusion":
             result.append(
-                sd_cost_model.predict(model_name, device, current_feature["height"], current_feature["width"])
+                get_sd_cost_model().predict(model_name, device, current_feature["height"], current_feature["width"])
             )
         else:
             result.append(random.uniform(1.0, 100))  # Return a random cost for unknown models

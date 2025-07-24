@@ -6,7 +6,7 @@ Unified CLI for gswarm - Distributed GPU cluster management system
 from .profiler import cli as profiler_cli
 from .model import cli as model_cli
 from .data import cli as data_cli
-from .queue import cli as queue_cli
+# from .queue import cli as queue_cli  # TODO: Convert to typer format
 from .host import cli as host_cli
 from .client import cli as client_cli
 
@@ -34,7 +34,7 @@ app.add_typer(client_cli.app, name="client", help="Client node management")
 app.add_typer(profiler_cli.app, name="profiler", help="GPU profiling operations")
 app.add_typer(model_cli.app, name="model", help="Model management operations")
 app.add_typer(data_cli.app, name="data", help="Data pool management")
-app.add_typer(queue_cli.app, name="queue", help="Task queue management")
+# app.add_typer(queue_cli.app, name="queue", help="Task queue management")  # TODO: Convert to typer format
 
 
 # Global callback to handle --yaml parameter
