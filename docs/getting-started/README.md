@@ -4,6 +4,7 @@ This section contains documentation to help you get started with GSwarm quickly.
 
 ## Documents
 
+- [**Installation Guide**](Installation.md) - Instructions for installing GSwarm and its dependencies
 - [**Quick Start Guide**](Quick-Start.md) - Step-by-step guide to get GSwarm up and running
   - Setting up host and client nodes
   - Starting profiling sessions

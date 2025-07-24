@@ -5,6 +5,7 @@ Welcome to the GSwarm documentation! This guide will help you understand, instal
 ## 📚 Documentation Structure
 
 ### 🚀 Getting Started
+- [**Installation Guide**](getting-started/Installation.md) - How to install GSwarm
 - [**Quick Start Guide**](getting-started/Quick-Start.md) - Get up and running with GSwarm quickly
 
 ### 🏗️ Architecture & Design
@@ -18,6 +19,8 @@ Welcome to the GSwarm documentation! This guide will help you understand, instal
 
 ### 📋 User Guides
 - [**Model Management Guide**](guides/README_gsmodel.md) - Comprehensive guide to the GSwarm model management system
+- [**Cost Models Guide**](guides/Cost-Models-Guide.md) - Using cost prediction models for inference time estimation
+- [**Scheduler Guide**](guides/Scheduler-Guide.md) - Different scheduling strategies for AI workflow optimization
 - [**Enhanced Features Guide**](guides/GSWARM_MODEL_ENHANCED.md) - Enhanced features and configurations
 - [**Advanced Metrics Guide**](guides/Sample-More-Metrics.md) - How to sample additional GPU metrics beyond default configuration
 
@@ -27,9 +30,10 @@ Welcome to the GSwarm documentation! This guide will help you understand, instal
 ## 🎯 Quick Navigation
 
 ### New Users
-1. Start with the [**Quick Start Guide**](getting-started/Quick-Start.md)
-2. Review the [**System Architecture**](architecture/Architecture.md) to understand how GSwarm works
-3. Check out the [**Model Management Guide**](guides/README_gsmodel.md) for model operations
+1. Follow the [**Installation Guide**](getting-started/Installation.md)
+2. Start with the [**Quick Start Guide**](getting-started/Quick-Start.md)
+3. Review the [**System Architecture**](architecture/Architecture.md) to understand how GSwarm works
+4. Check out the [**Model Management Guide**](guides/README_gsmodel.md) for model operations
 
 ### Developers
 1. Explore the [**API Reference**](api-reference/) for integration details

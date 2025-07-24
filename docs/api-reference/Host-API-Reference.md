@@ -2,14 +2,12 @@
 
 ## Overview
 
-gswarm provides both REST and gRPC APIs for different components. This document provides a comprehensive reference for all available APIs.
+gswarm provides a REST API for its model management and profiler components. This document provides a comprehensive reference for all available APIs.
 
 ## Base URLs
 
-- **Profiler gRPC**: `grpc://host:8090`
 - **Profiler HTTP**: `http://host:8091`
-- **Model Host API**: `http://host:9010`
-- **Model Client API**: `http://host:9011`
+- **Model Manager API**: `http://host:8100` (Note: Port updated from 9010 to 8100 as per latest code)
 
 ## REST API Conventions
 
@@ -21,677 +19,234 @@ gswarm provides both REST and gRPC APIs for different components. This document 
 ```json
 {
     "success": true,
-    "data": { ... },
-    "error": null
+    "message": "...",
+    "data": { ... }
 }
 ```
 
 ### Error Response
 ```json
 {
-    "success": false,
-    "data": null,
-    "error": {
-        "code": "ERROR_CODE",
-        "message": "Human readable error message",
-        "details": { ... }
-    }
+    "detail": "Error message"
 }
 ```
 
-## Model Management APIs (Host)
+---
+
+## Model Management APIs (FastAPI Head)
+
+These endpoints are served by the Model Manager on port `8100`.
+
+### System Management
+
+#### Root
+```http
+GET /
+```
+- **Description**: Root endpoint for basic connectivity check.
+- **Response**: `{"message": "GSwarm Model Manager API", "version": "0.5.0", "config_loaded": true}`
+
+#### Health Check
+```http
+GET /health
+```
+- **Description**: Provides health status and memory usage.
+- **Response**: `{"status": "healthy", "timestamp": "...", "memory_usage": {...}}`
+
+#### Get Configuration
+```http
+GET /config
+```
+- **Description**: Returns the current server configuration.
+- **Response**: `{"model_cache_dir": "...", "dram_cache_dir": "...", "model_manager_port": 8100}`
 
 ### Model Registry
 
 #### List Models
 ```http
-GET /api/v1/models
+GET /models
 ```
-
-Query Parameters:
-- `type` (string): Filter by model type
-- `location` (string): Filter by storage location
-- `status` (string): Filter by model status
-- `page` (int): Page number (default: 1)
-- `per_page` (int): Items per page (default: 20)
-
-Response:
-```json
-{
-    "models": [{
-        "model_name": "llama-7b",
-        "model_type": "llm",
-        "model_size": 13968179200,
-        "locations": ["node1:disk", "node2:gpu0"],
-        "services": {
-            "node1": "http://node1:8080",
-            "node2": "http://node2:8081"
-        },
-        "status": "ready"
-    }],
-    "total": 1,
-    "page": 1,
-    "per_page": 20
-}
-```
+- **Description**: Lists all registered models with their status.
+- **Response**: `{"models": [...], "count": ...}`
 
 #### Get Model Details
 ```http
-GET /api/v1/models/{model_name}
+GET /models/{model_name}
 ```
-
-Response:
-```json
-{
-    "model_name": "llama-7b",
-    "model_type": "llm",
-    "model_size": 13968179200,
-    "locations": ["node1:disk", "node2:gpu0"],
-    "services": {
-        "node1": "http://node1:8080"
-    },
-    "status": "ready",
-    "metadata": {
-        "framework": "pytorch",
-        "precision": "fp16",
-        "created_at": "2024-01-01T00:00:00Z"
-    }
-}
-```
+- **Description**: Get detailed information for a specific model.
+- **Response**: A JSON object with model details, checkpoints, and serving instances.
 
 #### Register Model
 ```http
-POST /api/v1/models
+POST /models
 ```
+- **Description**: Register a new model in the system.
+- **Request Body**: `RegisterModelRequest`
+  ```json
+  {
+      "name": "llama-7b",
+      "type": "llm",
+      "metadata": {"author": "meta"}
+  }
+  ```
 
-Request Body:
-```json
-{
-    "model_name": "llama-7b",
-    "model_type": "llm",
-    "model_size": 13968179200,
-    "source_url": "https://huggingface.co/meta-llama/Llama-2-7b",
-    "metadata": {
-        "framework": "pytorch",
-        "precision": "fp16"
-    }
-}
-```
-
-#### Delete Model
+#### Discover Models
 ```http
-DELETE /api/v1/models/{model_name}
+POST /discover
 ```
+- **Description**: Manually triggers a scan of cache directories to discover and register models.
 
-Query Parameters:
-- `force` (boolean): Force deletion even if services are running
-
-### Location Management
-
-#### Get Model Locations
+#### Validate All Models
 ```http
-GET /api/v1/models/{model_name}/locations
+POST /models/validate
 ```
+- **Description**: Validates the cache paths for all registered models and updates their statuses.
 
-#### Add Location
+#### Validate Single Model
 ```http
-POST /api/v1/models/{model_name}/locations
+GET /models/{model_name}/validate
 ```
+- **Description**: Validates the cache path for a single model.
 
-Request Body:
-```json
-{
-    "device": "node1:gpu0",
-    "status": "ready"
-}
-```
-
-#### Remove Location
-```http
-DELETE /api/v1/models/{model_name}/locations/{device}
-```
-
-### Service Management
-
-#### List Services
-```http
-GET /api/v1/services
-```
-
-Response:
-```json
-{
-    "services": [{
-        "service_id": "llama-7b-node1-8080",
-        "model_name": "llama-7b",
-        "node": "node1",
-        "device": "gpu0",
-        "port": 8080,
-        "status": "running",
-        "url": "http://node1:8080",
-        "created_at": "2024-01-01T00:00:00Z"
-    }]
-}
-```
-
-#### Deploy Service
-```http
-POST /api/v1/services
-```
-
-Request Body:
-```json
-{
-    "model_name": "llama-7b",
-    "nodes": ["node1", "node2"],
-    "config": {
-        "port": 8080,
-        "replicas": 2,
-        "load_balancing": "round_robin",
-        "max_batch_size": 32,
-        "timeout": 30
-    }
-}
-```
-
-#### Stop Service
-```http
-DELETE /api/v1/services/{service_id}
-```
-
-### System Management
-
-#### List Nodes
-```http
-GET /api/v1/nodes
-```
-
-Response:
-```json
-{
-    "nodes": [{
-        "node_id": "node1",
-        "hostname": "gpu-server-01",
-        "ip_address": "192.168.1.101",
-        "status": "online",
-        "last_heartbeat": "2024-01-01T00:00:00Z",
-        "capabilities": {
-            "gpus": ["gpu0", "gpu1"],
-            "storage": {
-                "disk": 1000000000000,
-                "dram": 64000000000
-            }
-        }
-    }]
-}
-```
-
-#### Health Check
-```http
-GET /api/v1/health
-```
-
-#### System Metrics
-```http
-GET /api/v1/metrics
-```
-
-## Model Operations APIs (Client)
-
-### Model Storage
-
-#### List Local Models
-```http
-GET /api/v1/models
-```
+### Model Operations
 
 #### Download Model
 ```http
-POST /api/v1/models/{model_name}/download
+POST /download
 ```
-
-Request Body:
-```json
-{
-    "source_url": "https://huggingface.co/...",
-    "target_device": "disk",
-    "priority": "normal",
-    "verify_checksum": true
-}
-```
-
-Response:
-```json
-{
-    "task_id": "download-llama-7b-1234",
-    "status": "queued",
-    "position": 3,
-    "estimated_time": 300
-}
-```
-
-#### Move Model
-```http
-POST /api/v1/models/{model_name}/move
-```
-
-Request Body:
-```json
-{
-    "source_device": "disk",
-    "target_device": "gpu0",
-    "keep_source": false,
-    "priority": "high",
-    "compression": "none",
-    "verify_checksum": true
-}
-```
+- **Description**: Downloads a model from a source URL to disk or DRAM.
+- **Request Body**: `DownloadRequest`
+  ```json
+  {
+      "model_name": "llama-7b",
+      "source_url": "hf://meta-llama/Llama-2-7b-hf",
+      "target_device": "disk"
+  }
+  ```
 
 #### Copy Model
 ```http
-POST /api/v1/models/{model_name}/copy
+POST /copy
 ```
-
-Request Body:
-```json
-{
-    "source_device": "node1:disk",
-    "target_device": "node2:disk",
-    "priority": "normal",
-    "bandwidth_limit": 1000000000
-}
-```
-
-#### Delete Model
-```http
-DELETE /api/v1/models/{model_name}
-```
-
-Query Parameters:
-- `device` (string): Target device to remove from
-- `force` (boolean): Force removal even if in use
+- **Description**: Copies a model between storage devices (disk, DRAM). If the target is a GPU, it will trigger a serve operation.
+- **Request Body**: `CopyRequest`
+  ```json
+  {
+      "model_name": "llama-7b",
+      "source_device": "disk",
+      "target_device": "dram",
+      "keep_source": false
+  }
+  ```
 
 ### Model Serving
 
-#### Start Service
+#### Serve Model
 ```http
-POST /api/v1/services
+POST /serve
 ```
+- **Description**: Starts a vLLM server to serve a model on a specified GPU.
+- **Request Body**: `ServeRequest`
+  ```json
+  {
+      "model_name": "llama-7b",
+      "source_device": "disk",
+      "gpu_device": "gpu0",
+      "port": 8080,
+      "config": {"gpu_memory_utilization": 0.9}
+  }
+  ```
 
-Request Body:
-```json
-{
-    "model_name": "llama-7b",
-    "device": "gpu0",
-    "port": 8080,
-    "config": {
-        "framework": "vllm",
-        "max_batch_size": 32,
-        "max_sequence_length": 2048,
-        "gpu_memory_fraction": 0.9
-    }
-}
-```
-
-#### Stop Service
+#### Stop Serving Instance
 ```http
-DELETE /api/v1/services/{service_id}
+POST /stop_serve
 ```
+- **Description**: Stops a specific model serving instance.
+- **Request Body**: `StopServeRequest`
+  ```json
+  {
+      "model_name": "llama-7b",
+      "instance_id": "..."
+  }
+  ```
 
-#### Get Service Status
+#### List All Serving Instances
 ```http
-GET /api/v1/services/{service_id}/status
+GET /serving
 ```
+- **Description**: Lists all active serving instances across all models.
 
-### Resource Management
-
-#### Get Storage Status
+#### Get Model Serving Instances
 ```http
-GET /api/v1/resources
+GET /serving/{model_name}
 ```
+- **Description**: Lists all serving instances for a specific model.
 
-Response:
-```json
-{
-    "storage": {
-        "disk": {
-            "total": 1000000000000,
-            "used": 500000000000,
-            "available": 500000000000
-        },
-        "dram": {
-            "total": 64000000000,
-            "used": 32000000000,
-            "available": 32000000000
-        },
-        "gpu0": {
-            "total": 24000000000,
-            "used": 8000000000,
-            "available": 16000000000
-        }
-    },
-    "compute": {
-        "cpu": {
-            "cores": 32,
-            "usage": 45.5
-        },
-        "gpu0": {
-            "usage": 78.2,
-            "temperature": 65
-        }
-    }
-}
-```
+### In-Memory Storage Management
 
-## Data Pool APIs
-
-### Data Management
-
-#### List Data Chunks
+#### Get All Memory Models
 ```http
-GET /api/v1/data
+GET /memory/models
 ```
+- **Description**: Lists all models currently loaded in DRAM or on a GPU.
 
-Query Parameters:
-- `device` (string): Filter by device
-- `type` (string): Filter by chunk type
-
-Response:
-```json
-{
-    "chunks": [{
-        "chunk_id": "chunk-a1b2c3d4e5f6",
-        "chunk_type": "input",
-        "size": 1048576,
-        "format": "tensor",
-        "locations": [
-            {"device": "node1:dram", "status": "available"}
-        ],
-        "metadata": {
-            "created_by": "llama-7b",
-            "created_at": "2024-01-01T00:00:00Z",
-            "access_count": 5
-        }
-    }]
-}
-```
-
-#### Create Data Chunk
+#### Get DRAM Models
 ```http
-POST /api/v1/data
+GET /memory/dram
 ```
+- **Description**: Lists models loaded in DRAM.
 
-Request Body:
-```json
-{
-    "data": "base64_encoded_or_url",
-    "type": "input",
-    "format": "tensor",
-    "device": "dram",
-    "metadata": {
-        "shape": [1, 512, 768],
-        "dtype": "float16"
-    }
-}
-```
-
-#### Get Chunk Info
+#### Get GPU Models
 ```http
-GET /api/v1/data/{chunk_id}
+GET /memory/gpu
 ```
+- **Description**: Lists model instances loaded on GPUs.
 
-#### Move Data Chunk
+#### Unload DRAM Model
 ```http
-POST /api/v1/data/{chunk_id}/move
+DELETE /memory/dram/{model_name}
 ```
+- **Description**: Unloads a model from DRAM, freeing up memory.
 
-Request Body:
-```json
-{
-    "target_device": "gpu0",
-    "priority": "high"
-}
-```
+---
 
-#### Transfer Data Chunk
-```http
-POST /api/v1/data/{chunk_id}/transfer
-```
+## Profiler APIs (HTTP Control)
 
-Request Body:
-```json
-{
-    "target_node": "node2",
-    "target_device": "dram",
-    "delete_source": false
-}
-```
-
-#### Delete Data Chunk
-```http
-DELETE /api/v1/data/{chunk_id}
-```
-
-Query Parameters:
-- `force` (boolean): Force deletion even if referenced
-
-## Task Queue APIs
-
-### Queue Management
-
-#### Get Queue Status
-```http
-GET /api/v1/queue
-```
-
-Response:
-```json
-{
-    "pending": 5,
-    "running": 2,
-    "completed": 150,
-    "config": {
-        "max_concurrent_tasks": 4,
-        "priority_levels": ["critical", "high", "normal", "low"],
-        "resource_tracking": true
-    }
-}
-```
-
-#### List Tasks
-```http
-GET /api/v1/queue/tasks
-```
-
-Query Parameters:
-- `status` (string): Filter by task status
-- `limit` (int): Maximum tasks to return
-
-Response:
-```json
-{
-    "tasks": [{
-        "task_id": "download-llama-7b-1234",
-        "task_type": "download",
-        "priority": "normal",
-        "status": "running",
-        "dependencies": [],
-        "resources": {
-            "devices": ["node1:disk"],
-            "models": ["llama-7b"]
-        },
-        "created_at": 1704067200.0,
-        "started_at": 1704067210.0,
-        "progress": 45
-    }]
-}
-```
-
-#### Get Task Details
-```http
-GET /api/v1/queue/tasks/{task_id}
-```
-
-#### Cancel Task
-```http
-POST /api/v1/queue/tasks/{task_id}/cancel
-```
-
-#### Get Task History
-```http
-GET /api/v1/queue/history
-```
-
-Query Parameters:
-- `limit` (int): Number of records
-- `since` (string): Timestamp filter
-- `status` (string): Filter by final status
-
-## Profiler APIs
-
-### gRPC APIs (protobuf)
-
-See [grpc-protocol-design.md](grpc-protocol-design.md) for detailed gRPC API documentation.
-
-### HTTP Control APIs
+These endpoints are served by the Profiler on port `8091`.
 
 #### Get Status
 ```http
 GET /status
 ```
-
-Response:
-```json
-{
-    "is_profiling": true,
-    "active_sessions": [
-        {
-            "name": "training_run_1",
-            "start_time": "2024-01-01T00:00:00Z",
-            "frames_collected": 1500
-        }
-    ],
-    "connected_clients": 3,
-    "enable_bandwidth_profiling": true,
-    "enable_nvlink_profiling": false,
-    "sampling_frequency_ms": 1000
-}
-```
+- **Description**: Retrieves the current status of the profiler, including connected clients and active sessions.
 
 #### Start Profiling
 ```http
 POST /profiling/start
 ```
-
-Request Body:
-```json
-{
-    "name": "my_experiment"
-}
-```
+- **Description**: Starts a new profiling session.
+- **Request Body**:
+  ```json
+  {
+      "name": "my_experiment",
+      "report_metrics": ["gpu_utilization", "gpu_memory"]
+  }
+  ```
 
 #### Stop Profiling
 ```http
 POST /profiling/stop
 ```
-
-Request Body:
-```json
-{
-    "name": "my_experiment"
-}
-```
-
-#### List Sessions
-```http
-GET /profiling/sessions
-```
+- **Description**: Stops the currently active profiling session.
 
 #### Get Connected Clients
 ```http
 GET /clients
 ```
-
-Response:
-```json
-{
-    "clients": [
-        {
-            "client_id": "node1",
-            "hostname": "gpu-server-01",
-            "gpus": [
-                {
-                    "device_id": 0,
-                    "name": "NVIDIA A100",
-                    "memory_total": 40960,
-                    "compute_capability": "8.0"
-                }
-            ],
-            "last_update": "2024-01-01T00:00:00Z",
-            "status": "healthy"
-        }
-    ]
-}
-```
+- **Description**: Returns a list of all clients connected to the profiler.
 
 #### Get Latest Metrics
 ```http
 GET /metrics/latest
 ```
-
-## Error Codes
-
-### Common Error Codes
-
-| Code | Description |
-|------|-------------|
-| `RESOURCE_UNAVAILABLE` | Insufficient resources (memory, storage, etc.) |
-| `MODEL_NOT_FOUND` | Model does not exist in registry |
-| `TASK_FAILED` | Task execution failed |
-| `DEPENDENCY_FAILED` | Required dependency task failed |
-| `NETWORK_ERROR` | Network communication error |
-| `INVALID_REQUEST` | Invalid request parameters |
-| `CONFLICT` | Resource conflict or race condition |
-| `NOT_IMPLEMENTED` | Feature not yet implemented |
-| `INTERNAL_ERROR` | Internal server error |
-
-### HTTP Status Codes
-
-| Status | Meaning |
-|--------|---------|
-| 200 | Success |
-| 201 | Created |
-| 204 | No Content (successful deletion) |
-| 400 | Bad Request |
-| 404 | Not Found |
-| 409 | Conflict |
-| 500 | Internal Server Error |
-| 503 | Service Unavailable |
-
-## Rate Limiting
-
-Currently, no rate limiting is implemented. Future versions will include:
-- Per-client rate limits
-- Endpoint-specific limits
-- Burst allowances
-
-## Authentication
-
-Currently, no authentication is required. Future versions will support:
-- API key authentication
-- JWT tokens
-- Role-based access control
-
-## Versioning
-
-All APIs are versioned with `/api/v1/` prefix. When breaking changes are introduced:
-- New version will be `/api/v2/`
-- Old version supported for 6 months
-- Deprecation warnings in headers
-
-## WebSocket APIs (Future)
-
-Planned WebSocket endpoints for real-time updates:
-- `/ws/profiling`: Real-time profiling metrics
-- `/ws/tasks`: Task status updates
-- `/ws/models`: Model status changes 
+- **Description**: Fetches the most recent metrics payload from all connected clients. This is useful for real-time monitoring.

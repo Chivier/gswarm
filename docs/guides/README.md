@@ -27,6 +27,20 @@ Comprehensive guides for using GSwarm's features effectively.
   - Performance monitoring
   - Metric configuration
 
+### Cost Prediction & Scheduling
+- [**Cost Models Guide**](Cost-Models-Guide.md) - Guide to using cost prediction models for inference time estimation
+  - LLM cost prediction
+  - Stable Diffusion cost prediction
+  - Model training and updates
+  - Integration with predictor module
+
+- [**Scheduler Guide**](Scheduler-Guide.md) - Comprehensive guide to GSwarm's scheduling strategies
+  - Baseline scheduler (Ray-like)
+  - Offline batch scheduler
+  - Online real-time scheduler
+  - Static deployment scheduler
+  - Performance metrics and optimization
+
 ## Guide Categories
 
 ### 🚀 **Beginner Guides**
