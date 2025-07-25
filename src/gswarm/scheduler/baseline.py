@@ -1,5 +1,4 @@
 """
-"""
 Baseline Scheduler for GSwarm Workflows
 Uses Ray-like scheduling: runs models one by one, maintaining a queue of ready nodes.
 """

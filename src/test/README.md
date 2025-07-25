@@ -6,80 +6,93 @@ This directory contains a comprehensive test suite for the GSwarm distributed GP
 
 ```
 src/test/
-├── api/           # REST API endpoint tests
-├── deployment/    # Infrastructure deployment scripts
+├── basic/         # Basic functionality tests (host/client startup)
+├── profiler/      # GSwarm profiler tests
+├── model/         # Model download and serving tests
+├── prediction/    # Model execution time prediction tests
+├── data/          # Data handling and management tests
+├── unit/          # Unit tests for individual components
 ├── gsmodel_data/  # Test data for gsmodel
 ├── gsmodel_test/  # Test configurations for gsmodel
-├── integration/   # Integration tests for component interactions
-├── performance/   # Performance and stress tests
-├── scripts/       # Test automation scripts
-│   ├── llm/      # LLM-specific test scripts
-│   └── run_all_tests.sh
-└── unit/         # Unit tests for individual components
+└── scripts/       # Test automation scripts
+    ├── llm/       # LLM-specific test scripts
+    └── run_all_tests.sh
 ```
 
 ## Quick Start
 
-### 1. Deploy Infrastructure
+### Run All New Tests
 
 ```bash
-# Start host
-cd deployment
-./start_host.sh
-
-# Start client(s)
-./start_client.sh
-
-# Monitor clients
-./connect_client.sh monitor
+# Run the complete new test suite
+cd src/test
+./run_new_tests.sh
 ```
 
-### 2. Run Tests
+### Run Individual Test Categories
+
+```bash
+# 1. Basic functionality test (host/client startup)
+python basic/test_basic_functionality.py
+
+# 2. Profiler test
+python profiler/test_profiler.py
+
+# 3. Model serving test (requires GPU and may take time)
+python model/test_model_serve.py
+
+# 4. Prediction test
+python prediction/test_prediction.py
+
+# 5. Data handling test
+python data/test_data_handling.py
+```
+
+### Run Unit Tests
 
 ```bash
 # Run all unit tests
 cd unit
 python -m unittest discover
-
-# Run integration tests
-cd integration
-python test_gswarm.py
-
-# Run API tests (requires running host)
-cd api
-SKIP_API_TESTS=false python test_rest_api.py
-
-# Run performance tests
-cd performance
-python test_stress.py
 ```
 
 ## Test Categories
 
-### Deployment (`deployment/`)
-Infrastructure deployment and management scripts:
-- `start_host.sh` - Start GSwarm host service
-- `start_client.sh` - Start and register clients
-- `connect_client.sh` - Client connection management
+### Basic Functionality (`basic/`)
+Tests for core GSwarm operations:
+- `test_basic_functionality.py` - Host and client startup/shutdown
+- Verifies process management and graceful termination
+- Tests basic connectivity between host and client
+
+### Profiler Tests (`profiler/`)
+GPU and system profiling functionality:
+- `test_profiler.py` - Tests profiler read operations
+- Validates profiler output formats (text/JSON)
+- Checks GPU metrics collection
+
+### Model Tests (`model/`)
+Model management and serving:
+- `test_model_serve.py` - Model download and serving
+- Tests model listing and deployment
+- Requires GPU for full functionality
+
+### Prediction Tests (`prediction/`)
+Model execution time prediction:
+- `test_prediction.py` - Performance prediction for various configurations
+- Tests prediction across different GPU types
+- Validates batch size and token count impact
+
+### Data Tests (`data/`)
+Data management functionality:
+- `test_data_handling.py` - Upload, download, and sync operations
+- Tests dataset listing and retrieval
+- Validates data synchronization between nodes
 
 ### Unit Tests (`unit/`)
 Focused tests for individual components:
 - `test_device_utils.py` - Device format parsing and utilities
 - `test_cost_models.py` - Cost prediction models
 - `test_schedulers.py` - Scheduler implementations
-
-### Integration Tests (`integration/`)
-Tests for component interactions:
-- `test_gswarm.py` - Comprehensive component testing
-- `test_end_to_end.py` - Complete workflow simulations
-
-### API Tests (`api/`)
-REST API endpoint verification:
-- `test_rest_api.py` - All API endpoints including device format
-
-### Performance Tests (`performance/`)
-Stress and scalability testing:
-- `test_stress.py` - Throughput, scaling, and concurrency tests
 
 ## Device Format Testing
 
@@ -96,17 +109,28 @@ The test suite validates the new device notation format throughout:
 
 ## Running All Tests
 
-### Complete Test Suite
+### Complete New Test Suite
 
 ```bash
 # From src/test directory
-./scripts/run_all_tests.sh
+./run_new_tests.sh
+```
 
-# Or manually:
+This will run all new tests in sequence:
+1. Basic functionality tests
+2. Profiler tests
+3. Model serving tests
+4. Prediction tests
+5. Data handling tests
+
+### Running Legacy Tests
+
+```bash
+# Unit tests only
 cd unit && python -m unittest discover && cd ..
-cd integration && python test_gswarm.py && cd ..
-cd api && SKIP_API_TESTS=false python test_rest_api.py && cd ..
-cd performance && python test_stress.py && cd ..
+
+# All legacy tests (if available)
+./scripts/run_all_tests.sh
 ```
 
 ### Test Coverage
@@ -123,28 +147,31 @@ coverage html  # View in browser
 
 ## Multi-Node Testing
 
-### Setup Multiple Nodes
+### Using New Tests
+
+The new test suite automatically handles host/client startup for each test. To test in a multi-node environment:
+
+```bash
+# Set environment variables for remote host
+export GSWARM_HOST_URL=http://host-ip:8095
+export GSWARM_HTTP_PORT=8096
+export GSWARM_MODEL_PORT=9010
+
+# Run tests
+./run_new_tests.sh
+```
+
+### Manual Multi-Node Setup
 
 ```bash
 # Host machine
-cd deployment
-./start_host.sh -d
+gswarm host start --port 8095 --http-port 8096 --model-port 9010
 
 # GPU Node 1
-CLIENT_NAME=gpu-node-1 HOST_URL=http://host-ip:8080 ./start_client.sh -d
+gswarm client connect host-ip:8095 --resilient
 
 # GPU Node 2
-CLIENT_NAME=gpu-node-2 HOST_URL=http://host-ip:8080 ./start_client.sh -d
-
-# Monitor
-HOST_URL=http://host-ip:8080 ./connect_client.sh monitor
-```
-
-### Run Distributed Tests
-
-```bash
-cd integration
-GSWARM_HOST_URL=http://host-ip:8080 python test_end_to_end.py
+gswarm client connect host-ip:8095 --resilient
 ```
 
 ## Performance Benchmarks
@@ -161,12 +188,14 @@ Expected performance on modern hardware:
 
 ## Environment Variables
 
-### Common
-- `GSWARM_HOST_URL`: Host URL (default: http://localhost:8080)
-- `SKIP_API_TESTS`: Skip API tests (default: true)
+### New Test Suite
+- `GSWARM_HOST_URL`: Host URL (default: http://localhost:8095)
+- `GSWARM_HTTP_PORT`: HTTP API port (default: 8096)
+- `GSWARM_MODEL_PORT`: Model serving port (default: 9010)
 - `TEST_VERBOSE`: Enable verbose output
 
-### Deployment
+### Legacy Tests
+- `SKIP_API_TESTS`: Skip API tests (default: true)
 - `HOST_PORT`: Host HTTP port (default: 8080)
 - `CLIENT_NAME`: Client identifier
 - `GPU_COUNT`: Number of GPUs
@@ -175,23 +204,28 @@ Expected performance on modern hardware:
 
 ### Common Issues
 
-1. **Port conflicts**: Check if ports 8080/8081 are in use
-2. **GPU detection**: Ensure nvidia-smi is available
-3. **Network issues**: Verify connectivity between nodes
-4. **API timeouts**: Increase timeout values in tests
+1. **Port conflicts**: Check if ports 8095/8096/9010 are in use
+2. **GPU detection**: Ensure nvidia-smi is available (model tests may fail without GPU)
+3. **Process cleanup**: Tests automatically clean up processes, but check for orphaned gswarm processes
+4. **Model download**: Large model downloads may timeout on slow connections
+5. **Network issues**: Verify connectivity between nodes for multi-node testing
 
 ### Debug Mode
 
 ```bash
-# Enable debug logging
-LOG_LEVEL=DEBUG ./start_host.sh
+# Enable debug logging for tests
+export TEST_VERBOSE=1
+./run_new_tests.sh
 
-# Verbose test output
-python test_gswarm.py -v
+# Run individual test with verbose output
+python -v basic/test_basic_functionality.py
 
-# Check logs
+# Check GSwarm logs (if using default paths)
 tail -f ~/.gswarm/host/logs/host.log
 tail -f ~/.gswarm/client/logs/client.log
+
+# Monitor running processes
+ps aux | grep gswarm
 ```
 
 ## Contributing
