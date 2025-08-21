@@ -17,38 +17,58 @@ gswarm client connect <host_ip>:8090
 
 ### 2. Start Profiling
 
-Send POST request to host HTTP API:
+Start profiling via CLI (with auto-discovery):
 
 ```bash
-curl -X POST http://localhost:8091/profiling/start \
-    -H "Content-Type: application/json" \
-    -d '{"name": "<task_name>", "report_metrics": ["gpu_utilization", "gpu_memory", "gpu_dram_bandwidth", "gpu_bubble"]}'
+gswarm profiler start --name <task_name>
+```
+
+Or specify host and metrics:
+
+```bash
+gswarm profiler start --name <task_name> --host localhost:50051 --report-metrics gpu_utilization --report-metrics gpu_memory
 ```
 
 Parameters:
-- `name`: Name of your profiling task
-- `report_metrics`: Metrics to be collected (reference: `src/gswarm/profiler/utils.py`)
+- `name`: Name of your profiling task (auto-generated if not provided)
+- `host`: gRPC host address (auto-discovered if not specified)
+- `report-metrics`: Specific metrics to collect (can be specified multiple times)
 
-Alternatively, start profiling via CLI:
-
-```bash
-gswarm profiler start --name <task_name> --report-metrics <metrics>
-```
+Available metrics:
+- `gpu_utilization` - GPU utilization percentage
+- `gpu_memory` - GPU memory usage
+- `gpu_dram_bandwidth` - DRAM bandwidth utilization
+- `gpu_bubble` - GPU bubble metrics for performance analysis
 
 ### 3. Stop Profiling
 
-Via HTTP API:
-```bash
-curl -X POST http://localhost:8091/profiling/stop \
-    -H "Content-Type: application/json" \
-    -d '{"name": "<task_name>"}'
-```
-
-Or via CLI:
+Stop a specific profiling session:
 ```bash
 gswarm profiler stop --name <task_name>
 ```
 
-### 4. Retrieve Results
+Or stop all active sessions:
+```bash
+gswarm profiler stop
+```
+
+### 4. Check Status
+
+Get profiler status:
+```bash
+gswarm profiler status
+```
+
+Read cluster metrics:
+```bash
+gswarm profiler read --output cluster_metrics.json
+```
+
+### 5. Retrieve and Analyze Results
 
 Profiling data is saved in the gswarm working directory as `<task_name>.json`.
+
+Analyze the collected data:
+```bash
+gswarm profiler analyze <task_name>.json --plot analysis.pdf
+```
